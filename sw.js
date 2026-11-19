@@ -1,15 +1,15 @@
 // Umark — service worker : l'app s'ouvre même sans Internet.
 // Change VERSION à chaque mise à jour de l'app pour que les téléphones récupèrent la nouvelle version.
-const VERSION = "umark-v1";
+const VERSION = "umark-v2";
 const SHELL = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./favicon.svg",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/maskable-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icon-192.png",
+  "./icon-512.png",
+  "./maskable-512.png",
+  "./apple-touch-icon.png"
 ];
 
 self.addEventListener("install", event => {
