@@ -1,0 +1,13 @@
+{
+  "appId": "com.umark.app",
+  "appName": "Umark",
+  "webDir": "docs",
+  "backgroundColor": "#13294b",
+  "android": {
+    "backgroundColor": "#13294b"
+  },
+  "ios": {
+    "backgroundColor": "#13294b",
+    "contentInset": "never"
+  }
+}

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#13294b">
+<meta name="description" content="Umark — tes notes universitaires, tes moyennes et ton GPA, au même endroit.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Umark">
+<title>Umark</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#13294b; --navy2:#1e3a66; --gold:#c99a2e; --gold-soft:#f6edd6;
+  --bg:#f3f4f7; --card:#ffffff; --ink:#152033; --muted:#5d6878; --line:#dde2ea;
+  --good:#1f6f4a; --mid:#a8690f; --low:#8c1d40;
+  --good-soft:#e2f0e8; --mid-soft:#f8ecd3; --low-soft:#f5e1e7;
+  --shadow:0 1px 2px rgba(19,41,75,.06),0 6px 18px rgba(19,41,75,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0d1522;--card:#152033;--ink:#e7ebf2;--muted:#9aa5b5;--line:#26344b;
+  --gold:#e0b54d;--gold-soft:#3a3018;--good:#6cc596;--mid:#e3ad55;--low:#ef8aa6;
+  --good-soft:#173326;--mid-soft:#3a2c14;--low-soft:#3d1c28;--shadow:none}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:"IBM Plex Sans",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+.serif{font-family:"Source Serif 4",Georgia,serif}
+
+/* barre supérieure */
+.appbar{background:var(--navy);color:#fff;border-bottom:3px solid var(--gold);padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.wrap{padding-bottom:calc(90px + env(safe-area-inset-bottom))}
+body{overscroll-behavior-y:none}
+.appbar-in{max-width:780px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand svg{flex:none}
+.brand-name{font-family:"Source Serif 4",Georgia,serif;font-weight:700;font-size:24px;letter-spacing:.01em}
+.brand-name span{color:var(--gold)}
+.appbar-right{display:flex;align-items:center;gap:10px}
+.sync{font-size:12px;display:inline-flex;align-items:center;gap:6px;color:#c9d3e3;white-space:nowrap}
+.sync i{width:8px;height:8px;border-radius:50%;background:#8a96a8;display:inline-block}
+.sync.ok i{background:#5cc28d}.sync.busy i{background:var(--gold)}.sync.warn i{background:#ef8aa6}
+@media (max-width:480px){.sync .txt{display:none}}
+.btn-bar{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.22)}
+
+.wrap{max-width:780px;margin:0 auto;padding:0 16px 90px}
+nav{display:flex;gap:8px;overflow-x:auto;padding:16px 0 6px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+button{cursor:pointer;border:0;border-radius:10px;padding:9px 14px;background:var(--navy);color:#fff;font-weight:500}
+@media (prefers-color-scheme:dark){button{background:var(--gold);color:#16120a}}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.link{background:none;color:var(--navy2);padding:6px 4px;font-weight:600}
+@media (prefers-color-scheme:dark){button.link{color:var(--gold)}}
+button.danger{background:var(--low);color:#fff}
+button.small{padding:6px 11px;font-size:14px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.chip{white-space:nowrap;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 15px;font-size:14px}
+.chip.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+@media (prefers-color-scheme:dark){.chip.active{background:var(--gold);color:#16120a;border-color:var(--gold)}}
+.chip.add{border-style:dashed;color:var(--muted)}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+#summary{margin:12px 0 28px;overflow:hidden}
+.sum-top{padding:20px 20px 16px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:16px;align-items:end}
+.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600}
+.big{font-family:"Source Serif 4",Georgia,serif;font-weight:700;font-size:46px;line-height:1}
+.big small,.grade small{font-family:"IBM Plex Sans",sans-serif;font-size:14px;color:var(--muted);margin-left:3px;font-weight:500}
+.stat{font-size:22px;font-weight:700}
+.stat small{font-size:13px;color:var(--muted);font-weight:500}
+.sum-foot{display:flex;justify-content:space-between;gap:8px 14px;flex-wrap:wrap;padding:12px 20px;background:var(--gold-soft);font-size:14px;color:var(--muted);align-items:center}
+.sum-foot b{color:var(--ink)}
+@media (max-width:560px){.sum-top{grid-template-columns:1fr 1fr 1fr}.sum-top>div:first-child{grid-column:1/-1}.big{font-size:44px}}
+
+.row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0;font-weight:700}
+h3{margin:0;font-size:17px;font-weight:600}
+.subj{margin-bottom:12px;overflow:hidden;border-left:4px solid var(--line)}
+.subj.t-good{border-left-color:var(--good)}.subj.t-mid{border-left-color:var(--mid)}.subj.t-low{border-left-color:var(--low)}
+.subj-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:15px 18px 12px;width:100%;background:none;color:inherit;text-align:left;border-radius:0;font-weight:400}
+.code{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--gold);text-transform:uppercase}
+@media (prefers-color-scheme:light){.code{color:#9a7316}}
+.meta{font-size:13px;color:var(--muted);margin-top:2px}
+.gradebox{display:flex;align-items:center;gap:8px;flex:none}
+.grade{font-family:"Source Serif 4",Georgia,serif;font-weight:700;font-size:26px;white-space:nowrap}
+.letter{font-weight:700;font-size:15px;min-width:38px;text-align:center;padding:5px 8px;border-radius:8px}
+.g-good{color:var(--good)}.g-mid{color:var(--mid)}.g-low{color:var(--low)}.g-none{color:var(--muted);font-size:20px}
+.letter.g-good{background:var(--good-soft)}.letter.g-mid{background:var(--mid-soft)}.letter.g-low{background:var(--low-soft)}
+.bar{height:5px;background:var(--line);margin:0 18px 14px;border-radius:5px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--navy2);border-radius:5px;transition:width .3s}
+@media (prefers-color-scheme:dark){.bar span{background:var(--gold)}}
+.evals{border-top:1px solid var(--line);padding:6px 18px 14px}
+.ev{display:grid;grid-template-columns:1fr auto auto;gap:4px 14px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.ev-title{font-weight:500}
+.ev-sub{font-size:13px;color:var(--muted)}
+.ev-score{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.ev-score .ev-sub{font-weight:400}
+.pending{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;background:var(--line);color:var(--muted);font-weight:500}
+.ev-btns{display:flex;gap:2px}
+.icon{background:none;color:var(--muted);padding:6px 8px;border-radius:8px;font-size:15px}
+.icon:hover{background:var(--line);color:var(--ink)}
+.subj-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+.note{font-size:13px;color:var(--muted);margin:8px 0 0}
+.note.warn{color:var(--mid)}
+.target{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--gold-soft);font-size:14px}
+.empty{text-align:center;padding:36px 20px;color:var(--muted)}
+.empty p{margin:0 0 14px}
+
+.overlay{position:fixed;inset:0;background:rgba(10,18,32,.5);display:flex;align-items:flex-end;justify-content:center;z-index:50}
+@media (min-width:600px){.overlay{align-items:center;padding:20px}}
+.modal{background:var(--card);width:100%;max-width:500px;border-radius:18px 18px 0 0;padding:22px 20px 20px;max-height:92vh;overflow:auto;border-top:4px solid var(--gold)}
+@media (min-width:600px){.modal{border-radius:16px}}
+.modal h3{font-family:"Source Serif 4",Georgia,serif;font-size:23px;margin-bottom:14px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.field .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.field input,.field select,.field textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+.field textarea{min-height:120px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.err{color:var(--low);font-size:14px;margin:0 0 10px}
+.modal-actions{display:flex;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap}
+.modal-actions .right{display:flex;gap:8px;margin-left:auto}
+.sect{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
+.sect h4{margin:0 0 6px;font-size:15px}
+.sect p{margin:0 0 10px;font-size:14px;color:var(--muted)}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.choice{display:block;width:100%;text-align:left;margin-bottom:8px;padding:12px 14px}
+.choice small{display:block;opacity:.8;font-weight:400}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{background:transparent;color:var(--ink);border-radius:0;padding:7px 14px}
+.seg button.on{background:var(--navy);color:#fff}
+@media (prefers-color-scheme:dark){.seg button.on{background:var(--gold);color:#16120a}}
+table.scale{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+table.scale td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;box-shadow:var(--shadow);max-width:90vw}
+</style>
+</head>
+<body>
+<div class="appbar"><div class="appbar-in">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1e3a66"/><path d="M18 16v18a14 14 0 0 0 28 0V16" fill="none" stroke="#c99a2e" stroke-width="7" stroke-linecap="round"/></svg>
+    <div class="brand-name">U<span>mark</span></div>
+  </div>
+  <div class="appbar-right">
+    <span class="sync" id="sync"><i></i><span class="txt"></span></span>
+    <button class="btn-bar small" data-action="settings">Réglages</button>
+  </div>
+</div></div>
+<div class="wrap">
+  <nav id="sessions" aria-label="Sessions"></nav>
+  <section id="summary" class="card"></section>
+  <div class="row-head"><h2>Cours</h2><button class="small" data-action="add-subject">+ Cours</button></div>
+  <div id="subjects"></div>
+</div>
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+"use strict";
+const KEY = "notes-universitaires-v1";   // même clé qu'avant : les données déjà saisies sont reprises
+const open = new Set();
+let storageOk = true;
+
+/* ---------- barèmes ---------- */
+const SCALES = {
+  uottawa: {name: "uOttawa (sur 10)", max: 10, rows: [[90,"A+",10],[85,"A",9],[80,"A-",8],[75,"B+",7],[70,"B",6],[65,"C+",5],[60,"C",4],[55,"D+",3],[50,"D",2],[40,"E",1],[0,"F",0]]},
+  four:    {name: "Sur 4,0 (ex. U of T, McGill)", max: 4, rows: [[90,"A+",4],[85,"A",4],[80,"A-",3.7],[77,"B+",3.3],[73,"B",3],[70,"B-",2.7],[67,"C+",2.3],[63,"C",2],[60,"C-",1.7],[57,"D+",1.3],[53,"D",1],[50,"D-",0.7],[0,"F",0]]},
+  four3:   {name: "Sur 4,3 (ex. Alberta)", max: 4.3, rows: [[90,"A+",4.3],[85,"A",4],[80,"A-",3.7],[77,"B+",3.3],[73,"B",3],[70,"B-",2.7],[67,"C+",2.3],[63,"C",2],[60,"C-",1.7],[57,"D+",1.3],[53,"D",1],[50,"D-",0.7],[0,"F",0]]},
+  york:    {name: "Sur 9 (ex. York)", max: 9, rows: [[90,"A+",9],[80,"A",8],[75,"B+",7],[70,"B",6],[65,"C+",5],[60,"C",4],[55,"D+",3],[50,"D",2],[40,"E",1],[0,"F",0]]},
+  twelve:  {name: "Sur 12 (ex. Carleton, McMaster)", max: 12, rows: [[90,"A+",12],[85,"A",11],[80,"A-",10],[77,"B+",9],[73,"B",8],[70,"B-",7],[67,"C+",6],[63,"C",5],[60,"C-",4],[57,"D+",3],[53,"D",2],[50,"D-",1],[0,"F",0]]},
+  none:    {name: "Pourcentage seulement", max: null, rows: []}
+};
+const scaleDef = () => SCALES[state.gradeScale] || SCALES.uottawa;
+function letterOf(f){
+  const sc = scaleDef();
+  if (f === null || !sc.rows.length) return null;
+  const p = Math.round(f * 100);           // note finale arrondie à l'unité, comme sur un relevé
+  for (const r of sc.rows) if (p >= r[0]) return {letter: r[1], points: r[2]};
+  return null;
+}
+
+/* ---------- utilitaires ---------- */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num = v => {
+  if (v === null || v === undefined) return null;
+  const t = String(v).trim().replace(",", ".");
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : NaN;
+};
+const fr = (n, d) => n.toLocaleString("fr-CA", {minimumFractionDigits: 0, maximumFractionDigits: d});
+const $ = id => document.getElementById(id);
+
+function defaultState(){
+  const s = {id: uid(), name: "Automne 2026", subjects: []};
+  return {version: 2, scale: 100, gradeScale: "uottawa", sessions: [s], active: s.id, updatedAt: 0};
+}
+
+function normalize(d){
+  if (!d || typeof d !== "object" || !Array.isArray(d.sessions)) throw new Error("aucune session trouvée.");
+  const sessions = d.sessions.map(s => ({
+    id: String(s.id || uid()),
+    name: String(s.name || "Session"),
+    subjects: (Array.isArray(s.subjects) ? s.subjects : []).map(m => {
+      const tg = num(m.target);
+      return {
+        id: String(m.id || uid()),
+        name: String(m.name || "Cours"),
+        code: String(m.code || ""),
+        credits: (num(m.credits) > 0) ? num(m.credits) : null,
+        mode: m.mode === "coef" ? "coef" : "pct",
+        target: (tg > 0 && tg <= 100) ? tg : null,
+        evals: (Array.isArray(m.evals) ? m.evals : []).map(e => {
+          const max = num(e.max), sc = num(e.score), w = num(e.weight);
+          return {id: String(e.id || uid()), title: String(e.title || "Évaluation"),
+            score: (sc === null || Number.isNaN(sc)) ? null : sc, max: (max > 0) ? max : 100, weight: (w >= 0) ? w : 0};
+        })
+      };
+    })
+  }));
+  if (!sessions.length) sessions.push({id: uid(), name: "Session 1", subjects: []});
+  const v = Number(d.version) || 1;
+  return {
+    version: 2,
+    scale: v < 2 ? 100 : (d.scale === 20 ? 20 : 100),     // passage au % (usage canadien) pour les anciennes données
+    gradeScale: SCALES[d.gradeScale] ? d.gradeScale : "uottawa",
+    sessions,
+    active: sessions.some(s => s.id === d.active) ? d.active : sessions[0].id,
+    updatedAt: Number(d.updatedAt) || 0
+  };
+}
+const hasContent = s => s.sessions.some(x => x.subjects.length > 0);
+const sameData = (a, b) => JSON.stringify(a.sessions) === JSON.stringify(b.sessions);
+const countSubjects = s => s.sessions.reduce((a, x) => a + x.subjects.length, 0);
+
+function loadLocal(){
+  try { const raw = localStorage.getItem(KEY); return raw ? normalize(JSON.parse(raw)) : null; }
+  catch (e) { storageOk = false; return null; }
+}
+function persistLocal(){
+  try { localStorage.setItem(KEY, JSON.stringify(state)); storageOk = true; } catch (e) { storageOk = false; }
+}
+let state = loadLocal() || defaultState();
+
+function save(){
+  state.updatedAt = Date.now();
+  persistLocal();
+  schedulePush();
+  renderSync();
+}
+
+/* ---------- synchronisation entre appareils ---------- */
+const sync = {ref: null, status: "local", first: true, conflict: false, writing: false, dirty: false, timer: null, pendingRemote: null};
+function setSync(s){ sync.status = s; renderSync(); }
+function renderSync(){
+  const el = $("sync"); if (!el) return;
+  const map = {
+    local: ["", storageOk ? "Enregistré sur cet appareil" : "Stockage indisponible"],
+    connecting: ["busy", "Connexion…"],
+    saving: ["busy", "Synchronisation…"],
+    synced: ["ok", "Synchronisé"],
+    offline: ["warn", "Hors ligne · gardé sur cet appareil"],
+    error: ["warn", "Synchro échouée · gardé sur cet appareil"],
+    conflict: ["warn", "Choix à faire"]
+  };
+  const [cls, txt] = map[sync.status] || map.local;
+  el.className = "sync " + cls;
+  el.title = txt;
+  el.querySelector(".txt").textContent = txt;
+}
+async function initSync(){
+  if (!(window.claude && typeof window.claude.use === "function")){ setSync("local"); return; }
+  setSync("connecting");
+  try {
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user){ setSync("local"); return; }
+    const id = await user.id();
+    if (!id){ setSync("local"); return; }
+    sync.ref = db.doc("data/users/" + id + "/umark");
+  } catch (e) { setSync("local"); return; }
+  const timer = setTimeout(() => { if (sync.first) setSync("offline"); }, 10000);
+  sync.ref.onSnapshot(snap => {
+    if (sync.first && snap.metadata.fromCache) return;
+    clearTimeout(timer);
+    onRemote(snap);
+  }, () => { clearTimeout(timer); setSync("offline"); });
+}
+function readRemote(snap){
+  if (!snap.exists) return null;
+  try { const d = snap.data(); return normalize(d && d.state); } catch (e) { return null; }
+}
+function onRemote(snap){
+  const remote = readRemote(snap);
+  if (sync.first){
+    sync.first = false;
+    const localHas = hasContent(state), remoteHas = remote && hasContent(remote);
+    if (!remoteHas){ if (localHas) pushNow(); else setSync("synced"); return; }
+    if (!localHas || sameData(state, remote)){ adopt(remote); setSync("synced"); return; }
+    askConflict(remote);
+    return;
+  }
+  if (snap.metadata.hasPendingWrites || sync.conflict) return;
+  if (remote && remote.updatedAt > state.updatedAt){
+    if ($("modalRoot").innerHTML) sync.pendingRemote = remote; else adopt(remote);
+  }
+  if (!sync.writing) setSync("synced");
+}
+function adopt(remote){
+  const active = state.active;
+  state = remote;
+  if (state.sessions.some(s => s.id === active)) state.active = active;
+  persistLocal(); render();
+}
+function schedulePush(){
+  if (!sync.ref || sync.first || sync.conflict) return;
+  clearTimeout(sync.timer);
+  sync.timer = setTimeout(pushNow, 700);
+}
+async function pushNow(){
+  if (!sync.ref) return;
+  if (sync.writing){ sync.dirty = true; return; }
+  sync.writing = true; setSync("saving");
+  try {
+    await sync.ref.set({state: JSON.parse(JSON.stringify(state)), updatedAt: state.updatedAt || Date.now()});
+    setSync("synced");
+  } catch (e) {
+    if (e && e.code === "invalid_argument"){ sync.ref = null; setSync("local"); }  // visiteur sans droit d'écriture : on reste en local
+    else setSync("error");
+  }
+  finally {
+    sync.writing = false;
+    if (sync.dirty){ sync.dirty = false; pushNow(); }
+  }
+}
+function askConflict(remote){
+  sync.conflict = true; setSync("conflict");
+  const nl = countSubjects(state), nr = countSubjects(remote);
+  $("modalRoot").innerHTML = `<div class="overlay"><div class="modal" role="alertdialog">
+    <h3>Deux versions de tes notes</h3>
+    <p style="margin:0 0 14px;color:var(--muted);font-size:15px">Cet appareil et ton compte n'ont pas les mêmes données. Laquelle veux-tu garder partout ? L'autre sera remplacée.</p>
+    <button class="choice" id="keepLocal">Garder celles de cet appareil<small>${nl} cours</small></button>
+    <button class="choice ghost" id="keepRemote">Garder celles du compte<small>${nr} cours · modifiées ${remote.updatedAt ? "le " + new Date(remote.updatedAt).toLocaleString("fr-CA", {dateStyle: "medium", timeStyle: "short"}) : "sur un autre appareil"}</small></button>
+    <p class="note">Astuce : avant de choisir, tu peux exporter cette version depuis Réglages pour la garder en copie.</p>
+    </div></div>`;
+  $("keepLocal").onclick = () => { sync.conflict = false; $("modalRoot").innerHTML = ""; state.updatedAt = Date.now(); persistLocal(); pushNow(); render(); };
+  $("keepRemote").onclick = () => { sync.conflict = false; $("modalRoot").innerHTML = ""; adopt(remote); setSync("synced"); };
+}
+
+/* ---------- calculs ---------- */
+function subjectStats(m){
+  let totalW = 0, gradedW = 0, acc = 0, graded = 0;
+  for (const e of m.evals){
+    const w = e.weight || 0;
+    totalW += w;
+    if (e.score !== null && e.max > 0){ gradedW += w; acc += w * e.score / e.max; graded++; }
+  }
+  const avg = gradedW > 0 ? acc / gradedW : null;
+  const base = m.mode === "pct" ? Math.max(totalW, 100) : totalW;
+  const evaluated = base > 0 ? Math.min(gradedW / base * 100, 100) : 0;
+  let need = null;
+  if (m.target && base > 0){
+    const remaining = base - gradedW;
+    need = remaining > 0 ? {x: (m.target / 100 * base - acc) / remaining, remainingPct: remaining / base * 100} : {done: true};
+  }
+  return {avg, evaluated, totalW, gradedW, acc, graded, count: m.evals.length, need};
+}
+function groupStats(subjects){
+  let wSum = 0, acc = 0, withAvg = 0, credits = 0, missing = 0, evalW = 0, evalAcc = 0, gpW = 0, gpAcc = 0;
+  for (const m of subjects){
+    credits += m.credits || 0;
+    const st = subjectStats(m), w = m.credits || 1;
+    if (!m.credits) missing++;
+    evalW += w; evalAcc += w * st.evaluated;
+    if (st.avg !== null){
+      wSum += w; acc += w * st.avg; withAvg++;
+      const l = letterOf(st.avg); if (l){ gpW += w; gpAcc += w * l.points; }
+    }
+  }
+  return {avg: wSum > 0 ? acc / wSum : null, gpa: gpW > 0 ? gpAcc / gpW : null, withAvg, total: subjects.length,
+          credits, missing, evaluated: evalW > 0 ? evalAcc / evalW : 0};
+}
+const fmt = f => f === null ? "—" : (state.scale === 20 ? fr(f * 20, 2) : fr(f * 100, 1));
+const unit = () => state.scale === 20 ? "/20" : "%";
+const tone = f => f === null ? "none" : f >= 0.7 ? "good" : f >= 0.5 ? "mid" : "low";
+const curSession = () => state.sessions.find(s => s.id === state.active) || state.sessions[0];
+
+/* ---------- rendu ---------- */
+function render(){
+  const s = curSession(), sc = scaleDef();
+  $("sessions").innerHTML = state.sessions.map(x =>
+    `<button class="chip ${x.id === s.id ? "active" : ""}" data-action="session" data-id="${esc(x.id)}">${esc(x.name)}</button>`
+  ).join("") + `<button class="chip add" data-action="add-session">+ Session</button>`;
+
+  const g = groupStats(s.subjects);
+  const all = groupStats(state.sessions.flatMap(x => x.subjects));
+  const l = letterOf(g.avg);
+  const multi = state.sessions.length > 1;
+  $("summary").innerHTML = `
+    <div class="sum-top">
+      <div><div class="lbl">Moyenne de session · ${esc(s.name)}</div>
+        <div class="big g-${tone(g.avg)}">${fmt(g.avg)}<small>${g.avg === null ? "" : unit()}</small></div></div>
+      ${sc.max ? `<div><div class="lbl">Lettre</div><div class="stat">${l ? l.letter : "—"}</div></div>
+      <div><div class="lbl">Moy. pondérée</div><div class="stat">${g.gpa === null ? "—" : fr(g.gpa, 2)}<small> /${fr(sc.max, 1)}</small></div></div>`
+      : `<div><div class="lbl">Crédits</div><div class="stat">${fr(g.credits, 1)}</div></div><div></div>`}
+      <div><div class="lbl">Évalué</div><div class="stat">${fr(g.evaluated, 0)} %</div></div>
+    </div>
+    <div class="sum-foot">
+      <span>${sc.max ? `<b>${fr(g.credits, 1)}</b> crédits · ` : ""}${g.withAvg}/${g.total} cours notés${g.missing ? ` · ${g.missing} sans crédits (compté${g.missing > 1 ? "s" : ""} pour 1)` : ""}</span>
+      ${multi ? `<span>Cumulatif : <b>${fmt(all.avg)}${all.avg === null ? "" : " " + unit()}</b>${sc.max && all.gpa !== null ? ` · <b>${fr(all.gpa, 2)}</b>/${fr(sc.max, 1)}` : ""}</span>` : ""}
+      <button class="link small" data-action="edit-session">Gérer la session</button>
+    </div>`;
+
+  if (!s.subjects.length){
+    $("subjects").innerHTML = `<div class="card empty"><p>Aucun cours dans cette session.</p>
+      <div class="btnrow" style="justify-content:center"><button data-action="add-subject">Ajouter un cours</button>
+      <button class="ghost" data-action="example">Voir un exemple</button></div></div>`;
+    return;
+  }
+  $("subjects").innerHTML = s.subjects.map(subjectCard).join("");
+}
+
+function subjectCard(m){
+  const st = subjectStats(m), t = tone(st.avg), l = letterOf(st.avg);
+  const isOpen = open.has(m.id);
+  const meta = [];
+  if (m.credits) meta.push(`${fr(m.credits, 1)} crédit${m.credits > 1 ? "s" : ""}`);
+  meta.push(`${fr(st.evaluated, 0)} % évalué`);
+  meta.push(`${st.graded}/${st.count} note${st.count > 1 ? "s" : ""}`);
+  let body = "";
+  if (isOpen){
+    const rows = m.evals.map(e => {
+      const wLabel = m.mode === "pct" ? `${fr(e.weight, 2)} % de la note finale` : `coefficient ${fr(e.weight, 2)}`;
+      const scoreHtml = e.score === null
+        ? `<span class="pending">à venir</span><div class="ev-sub">sur ${fr(e.max, 2)}</div>`
+        : `${fr(e.score, 2)} / ${fr(e.max, 2)}<div class="ev-sub">${fmt(e.score / e.max)} ${unit()}</div>`;
+      return `<div class="ev">
+        <div><div class="ev-title">${esc(e.title)}</div><div class="ev-sub">${wLabel}</div></div>
+        <div class="ev-score">${scoreHtml}</div>
+        <div class="ev-btns">
+          <button class="icon" title="Modifier" aria-label="Modifier ${esc(e.title)}" data-action="edit-eval" data-sid="${esc(m.id)}" data-id="${esc(e.id)}">✎</button>
+          <button class="icon" title="Supprimer" aria-label="Supprimer ${esc(e.title)}" data-action="del-eval" data-sid="${esc(m.id)}" data-id="${esc(e.id)}">✕</button>
+        </div></div>`;
+    }).join("");
+    const notes = [];
+    if (m.mode === "pct" && m.evals.length){
+      notes.push(`<p class="note">Points acquis : <b>${fr(st.acc, 2)}</b> sur ${fr(st.gradedW, 2)} % déjà évalués.</p>`);
+      if (Math.abs(st.totalW - 100) > 0.01) notes.push(`<p class="note warn">Les pondérations totalisent ${fr(st.totalW, 2)} % (au lieu de 100 %).</p>`);
+    }
+    if (st.need){
+      const tl = letterOf(m.target / 100);
+      const goal = `${fr(m.target, 1)} %${tl ? " (" + tl.letter + ")" : ""}`;
+      let msg;
+      if (st.need.done) msg = `Toutes les évaluations sont notées. Objectif ${goal} : ${st.avg !== null && st.avg * 100 >= m.target - 1e-9 ? "atteint ✓" : "non atteint"}.`;
+      else if (st.need.x <= 0) msg = `Objectif ${goal} déjà assuré, même avec 0 sur le reste.`;
+      else if (st.need.x > 1) msg = `Objectif ${goal} hors d'atteinte : il faudrait ${fr(st.need.x * 100, 1)} % sur les ${fr(st.need.remainingPct, 0)} % restants.`;
+      else msg = `Pour atteindre ${goal}, il te faut <b>${fr(st.need.x * 100, 1)} %</b> de moyenne sur les ${fr(st.need.remainingPct, 0)} % restants.`;
+      notes.push(`<div class="target">${msg}</div>`);
+    }
+    body = `<div class="evals">
+      ${rows || `<p class="note">Aucune évaluation pour l'instant.</p>`}
+      ${notes.join("")}
+      <div class="subj-foot">
+        <button class="small" data-action="add-eval" data-sid="${esc(m.id)}">+ Évaluation</button>
+        <span><button class="link small" data-action="edit-subject" data-sid="${esc(m.id)}">Modifier</button>
+        <button class="link small" style="color:var(--low)" data-action="del-subject" data-sid="${esc(m.id)}">Supprimer</button></span>
+      </div></div>`;
+  }
+  return `<article class="card subj t-${t}">
+    <button class="subj-head" data-action="toggle" data-sid="${esc(m.id)}" aria-expanded="${isOpen}">
+      <div>${m.code ? `<div class="code">${esc(m.code)}</div>` : ""}<h3>${esc(m.name)}</h3><div class="meta">${meta.join(" · ")}</div></div>
+      <div class="gradebox"><div class="grade g-${t}">${fmt(st.avg)}${st.avg === null ? "" : `<small>${unit()}</small>`}</div>
+        ${l ? `<div class="letter g-${t}">${l.letter}</div>` : ""}</div>
+    </button>
+    <div class="bar" title="Part de la note finale déjà évaluée"><span style="width:${st.evaluated}%"></span></div>
+    ${body}</article>`;
+}
+
+/* ---------- fenêtres ---------- */
+function closeModal(){
+  $("modalRoot").innerHTML = "";
+  if (sync.pendingRemote){
+    const r = sync.pendingRemote; sync.pendingRemote = null;
+    if (r.updatedAt > state.updatedAt) adopt(r);
+  }
+}
+function openForm({title, fields, submitLabel = "Enregistrer", onSubmit, extra}){
+  const html = fields.map(f => f.row ? `<div class="two">${f.row.map(fieldHtml).join("")}</div>` : fieldHtml(f)).join("");
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><form class="modal" novalidate>
+    <h3>${esc(title)}</h3>${html}<p class="err" id="formErr"></p>
+    <div class="modal-actions">${extra ? `<button type="button" class="danger" id="extraBtn">${esc(extra.label)}</button>` : ""}
+      <div class="right"><button type="button" class="ghost" data-close="1">Annuler</button><button type="submit">${esc(submitLabel)}</button></div></div>
+    </form></div>`;
+  const form = $("modalRoot").querySelector("form");
+  const first = form.querySelector("input,select");
+  if (first) setTimeout(() => first.focus(), 30);
+  if (extra) $("extraBtn").onclick = extra.onClick;
+  form.onsubmit = ev => {
+    ev.preventDefault();
+    const vals = {};
+    form.querySelectorAll("[name]").forEach(el => vals[el.name] = el.value);
+    const err = onSubmit(vals);
+    if (err) $("formErr").textContent = err; else { save(); closeModal(); render(); }
+  };
+}
+function fieldHtml(f){
+  const id = "f_" + f.name;
+  const input = f.type === "select"
+    ? `<select id="${id}" name="${f.name}">${f.options.map(o => `<option value="${esc(o[0])}" ${o[0] === f.value ? "selected" : ""}>${esc(o[1])}</option>`).join("")}</select>`
+    : `<input id="${id}" name="${f.name}" value="${esc(f.value == null ? "" : f.value)}" placeholder="${esc(f.placeholder || "")}" ${f.numeric ? 'inputmode="decimal"' : ""} autocomplete="off">`;
+  return `<div class="field"><label for="${id}">${esc(f.label)}</label>${input}${f.hint ? `<div class="hint">${esc(f.hint)}</div>` : ""}</div>`;
+}
+function openConfirm(message, yesLabel, onYes){
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal" role="alertdialog">
+    <h3>Confirmer</h3><p>${message}</p>
+    <div class="modal-actions"><div class="right"><button class="ghost" data-close="1">Annuler</button><button class="danger" id="yesBtn">${esc(yesLabel)}</button></div></div>
+    </div></div>`;
+  $("yesBtn").onclick = () => { onYes(); save(); closeModal(); render(); };
+}
+let toastTimer;
+function toast(msg){
+  let t = document.querySelector(".toast");
+  if (!t){ t = document.createElement("div"); t.className = "toast"; document.body.appendChild(t); }
+  t.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 2800);
+}
+
+/* ---------- formulaires ---------- */
+function subjectForm(m){
+  const isNew = !m;
+  openForm({
+    title: isNew ? "Nouveau cours" : "Modifier le cours",
+    fields: [
+      {name: "name", label: "Nom du cours *", value: m ? m.name : "", placeholder: "Introduction à la microéconomie"},
+      {row: [
+        {name: "code", label: "Code du cours", value: m ? m.code : "", placeholder: "ECO1504"},
+        {name: "credits", label: "Crédits (optionnel)", value: m && m.credits ? fr(m.credits, 2) : "", placeholder: "3", numeric: true}
+      ]},
+      {row: [
+        {name: "mode", label: "Pondération", type: "select", value: m ? m.mode : "pct", options: [["pct", "En % (plan de cours)"], ["coef", "En coefficients"]]},
+        {name: "target", label: "Objectif (%)", value: m && m.target ? fr(m.target, 1) : "", placeholder: "ex. 80", numeric: true}
+      ]}
+    ],
+    submitLabel: isNew ? "Ajouter" : "Enregistrer",
+    onSubmit: v => {
+      const name = v.name.trim();
+      if (!name) return "Donne un nom au cours.";
+      const cr = num(v.credits), tg = num(v.target);
+      if (Number.isNaN(cr) || (cr !== null && cr < 0)) return "Les crédits doivent être un nombre positif.";
+      if (Number.isNaN(tg) || (tg !== null && (tg <= 0 || tg > 100))) return "L'objectif doit être un pourcentage entre 1 et 100.";
+      const data = {name, code: v.code.trim(), credits: cr > 0 ? cr : null, mode: v.mode, target: tg};
+      if (isNew){ const nm = Object.assign({id: uid(), evals: []}, data); curSession().subjects.push(nm); open.add(nm.id); }
+      else Object.assign(m, data);
+    }
+  });
+}
+function evalForm(m, e){
+  const isNew = !e;
+  const lastMax = m.evals.length ? m.evals[m.evals.length - 1].max : 100;
+  openForm({
+    title: isNew ? "Nouvelle évaluation" : "Modifier l'évaluation",
+    fields: [
+      {name: "title", label: "Intitulé *", value: e ? e.title : "", placeholder: "Examen de mi-session"},
+      {row: [
+        {name: "score", label: "Note obtenue", value: e && e.score !== null ? fr(e.score, 3) : "", placeholder: "vide = à venir", numeric: true},
+        {name: "max", label: "Sur combien *", value: fr(e ? e.max : lastMax, 3), placeholder: "100", numeric: true}
+      ]},
+      {name: "weight", label: m.mode === "pct" ? "Pondération (%) *" : "Coefficient *", value: e ? fr(e.weight, 3) : "",
+       placeholder: m.mode === "pct" ? "ex. 25" : "ex. 2", numeric: true,
+       hint: "Laisse la note vide si l'évaluation n'a pas encore eu lieu : elle ne comptera pas dans la moyenne."}
+    ],
+    submitLabel: isNew ? "Ajouter" : "Enregistrer",
+    onSubmit: v => {
+      const title = v.title.trim();
+      if (!title) return "Donne un intitulé à l'évaluation.";
+      const max = num(v.max), score = num(v.score), w = num(v.weight);
+      if (!(max > 0)) return "La note maximale doit être un nombre supérieur à 0.";
+      if (Number.isNaN(score) || (score !== null && score < 0)) return "La note obtenue doit être un nombre positif (ou vide).";
+      if (w === null || Number.isNaN(w) || w < 0) return m.mode === "pct" ? "Indique une pondération en % (nombre positif)." : "Indique un coefficient (nombre positif).";
+      if (m.mode === "pct" && w > 100) return "Une pondération ne peut pas dépasser 100 %.";
+      const data = {title, score, max, weight: w};
+      if (isNew) m.evals.push(Object.assign({id: uid()}, data)); else Object.assign(e, data);
+      if (score !== null && score > max) setTimeout(() => toast("Note supérieure au maximum : comptée telle quelle (bonus)."), 50);
+    }
+  });
+}
+function sessionForm(s){
+  const isNew = !s;
+  openForm({
+    title: isNew ? "Nouvelle session" : "Session",
+    fields: [{name: "name", label: "Nom de la session *", value: s ? s.name : "", placeholder: "Hiver 2027"}],
+    submitLabel: isNew ? "Créer" : "Enregistrer",
+    extra: isNew ? null : {label: "Supprimer", onClick: () => openConfirm(
+      `Supprimer la session <b>${esc(s.name)}</b> et ses ${s.subjects.length} cours ? Cette action est définitive.`, "Supprimer", () => {
+        state.sessions = state.sessions.filter(x => x.id !== s.id);
+        if (!state.sessions.length) state.sessions.push({id: uid(), name: "Session 1", subjects: []});
+        state.active = state.sessions[0].id;
+      })},
+    onSubmit: v => {
+      const name = v.name.trim();
+      if (!name) return "Donne un nom à la session.";
+      if (isNew){ const ns = {id: uid(), name, subjects: []}; state.sessions.push(ns); state.active = ns.id; }
+      else s.name = name;
+    }
+  });
+}
+
+/* ---------- réglages, export / import ---------- */
+let downloadsP = null;
+function getDownloads(){
+  if (!downloadsP){
+    downloadsP = (window.claude && typeof window.claude.use === "function")
+      ? Promise.resolve(window.claude.use("downloads")).catch(() => null) : Promise.resolve(null);
+  }
+  return downloadsP;
+}
+const exportJson = () => JSON.stringify(Object.assign({app: "Umark", exportedAt: new Date().toISOString()}, state), null, 2);
+const exportName = () => `umark-${new Date().toISOString().slice(0, 10)}.json`;
+
+function settingsModal(){
+  const sc = scaleDef();
+  const table = sc.rows.length ? `<table class="scale">${sc.rows.map((r, i) => {
+      const hi = i === 0 ? 100 : sc.rows[i - 1][0] - 1;
+      return `<tr><td><b>${r[1]}</b></td><td>${r[0]}–${hi} %</td><td style="text-align:right">${fr(r[2], 1)}</td></tr>`;
+    }).join("")}</table>` : "";
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal">
+    <h3>Réglages</h3>
+    <div class="field"><label for="gs">Barème de ton université</label>
+      <select id="gs">${Object.entries(SCALES).map(([k, v]) => `<option value="${k}" ${k === state.gradeScale ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select>
+      <div class="hint">Sert à convertir chaque moyenne en lettre et à calculer la moyenne pondérée (GPA). Les barèmes « ex. » sont des modèles courants : vérifie les seuils exacts dans le règlement de ton université.</div>
+      ${table}</div>
+    <div><div class="lbl" style="margin-top:6px">Affichage des notes</div>
+      <div class="seg"><button data-action="scale" data-v="100" class="${state.scale === 100 ? "on" : ""}">En %</button><button data-action="scale" data-v="20" class="${state.scale === 20 ? "on" : ""}">Sur 20</button></div></div>
+    <div class="sect"><h4>Synchronisation</h4><p>${sync.ref ? "Tes notes sont enregistrées sur ton compte et se mettent à jour sur tous tes appareils où Umark est ouvert." : "Synchronisation indisponible ici : tes notes restent sur cet appareil. Utilise l'export/import pour les transférer."}</p></div>
+    <div class="sect"><h4>Exporter</h4><p>Une copie de sauvegarde de toutes tes sessions en JSON.</p>
+      <div class="btnrow"><button id="expBtn">Exporter en JSON</button><button class="ghost" id="copyBtn">Copier le JSON</button></div>
+      <div class="field" id="jsonOutWrap" style="display:none;margin-top:10px"><textarea id="jsonOut" readonly></textarea></div></div>
+    <div class="sect"><h4>Importer</h4><p>Remplace les données actuelles par celles d'un fichier exporté.</p>
+      <div class="btnrow"><button class="ghost" id="fileBtn">Choisir un fichier .json</button><button class="ghost" id="pasteBtn">Coller du JSON</button></div>
+      <input type="file" id="fileIn" accept=".json,application/json" hidden>
+      <div class="field" id="pasteWrap" style="display:none;margin-top:10px"><textarea id="pasteIn" placeholder='{"sessions": [...]}'></textarea>
+        <button class="small" id="pasteGo" style="margin-top:8px">Importer ce texte</button></div>
+      <p class="err" id="impErr"></p></div>
+    <div class="sect"><h4>Tout effacer</h4><p>Supprime toutes les sessions${sync.ref ? ", sur tous tes appareils" : ""}.</p><button class="danger small" id="resetBtn">Tout effacer</button></div>
+    <div class="modal-actions"><div class="right"><button class="ghost" data-close="1">Fermer</button></div></div>
+    </div></div>`;
+
+  $("gs").onchange = ev => { state.gradeScale = ev.target.value; save(); render(); settingsModal(); };
+  const showJson = () => { $("jsonOutWrap").style.display = "block"; $("jsonOut").value = exportJson(); };
+  $("expBtn").onclick = async () => {
+    if (!(window.claude && typeof window.claude.use === "function")){
+      // App installée : feuille de partage du téléphone (Fichiers, Drive, e-mail…), sinon téléchargement classique
+      try {
+        const file = new File([exportJson()], exportName(), {type: "application/json"});
+        if (navigator.canShare && navigator.canShare({files: [file]})){
+          await navigator.share({files: [file], title: "Sauvegarde Umark"});
+          toast("Sauvegarde envoyée."); return;
+        }
+      } catch (err) { if (err && err.name === "AbortError") return; }
+    }
+    const d = await getDownloads();
+    if (d){
+      try { await d.save({filename: exportName(), data: exportJson()}); toast("Fichier exporté."); return; }
+      catch (err){ if (err && err.code === "declined") return; if (err && err.code === "rate_limited"){ toast("Un téléchargement est déjà en attente."); return; } }
+    }
+    try {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([exportJson()], {type: "application/json"}));
+      a.download = exportName(); document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {}
+    showJson();
+  };
+  $("copyBtn").onclick = async () => {
+    showJson();
+    try { await navigator.clipboard.writeText(exportJson()); toast("JSON copié."); }
+    catch (e) { const t = $("jsonOut"); t.focus(); t.select(); toast("Sélectionné : copie-le manuellement."); }
+  };
+  $("fileBtn").onclick = () => $("fileIn").click();
+  $("fileIn").onchange = ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => tryImport(r.result);
+    r.onerror = () => { $("impErr").textContent = "Impossible de lire ce fichier."; };
+    r.readAsText(f);
+  };
+  $("pasteBtn").onclick = () => { $("pasteWrap").style.display = "block"; $("pasteIn").focus(); };
+  $("pasteGo").onclick = () => tryImport($("pasteIn").value);
+  $("resetBtn").onclick = () => openConfirm("Effacer <b>toutes</b> les sessions, cours et notes ? Pense à exporter avant.", "Tout effacer", () => {
+    const keep = {scale: state.scale, gradeScale: state.gradeScale};
+    state = Object.assign(defaultState(), keep); open.clear();
+  });
+}
+function tryImport(text){
+  let data;
+  try { data = normalize(JSON.parse(text)); }
+  catch (e) { $("impErr").textContent = "Fichier invalide : " + (e.message || "JSON illisible."); return; }
+  openConfirm(`Importer ${data.sessions.length} session(s) et ${countSubjects(data)} cours ? Les données actuelles seront remplacées.`, "Importer", () => {
+    state = data; open.clear(); setTimeout(() => toast("Import réussi."), 50);
+  });
+}
+
+function loadExample(){
+  const s = curSession();
+  const a = {id: uid(), name: "Introduction à la microéconomie", code: "ECO1504", credits: 3, mode: "pct", target: 80, evals: [
+    {id: uid(), title: "Test 1", score: 41, max: 50, weight: 20},
+    {id: uid(), title: "Test 2", score: 15.5, max: 20, weight: 20},
+    {id: uid(), title: "Examen final", score: null, max: 100, weight: 60}]};
+  const b = {id: uid(), name: "Introduction à la gestion des affaires", code: "ADM1700", credits: 3, mode: "pct", target: null, evals: [
+    {id: uid(), title: "Quiz", score: 8, max: 10, weight: 10},
+    {id: uid(), title: "Mi-session", score: 68, max: 100, weight: 35},
+    {id: uid(), title: "Travail d'équipe", score: null, max: 100, weight: 20},
+    {id: uid(), title: "Examen final", score: null, max: 100, weight: 35}]};
+  s.subjects.push(a, b); open.add(a.id);
+}
+
+/* ---------- événements ---------- */
+document.addEventListener("click", ev => {
+  const closer = ev.target.closest("[data-close]");
+  if (closer && (ev.target === closer || closer.tagName === "BUTTON")){ closeModal(); return; }
+  const el = ev.target.closest("[data-action]");
+  if (!el) return;
+  const s = curSession();
+  const m = el.dataset.sid ? s.subjects.find(x => x.id === el.dataset.sid) : null;
+  const e = m && el.dataset.id ? m.evals.find(x => x.id === el.dataset.id) : null;
+  switch (el.dataset.action){
+    case "session": state.active = el.dataset.id; persistLocal(); render(); break;
+    case "add-session": sessionForm(null); break;
+    case "edit-session": sessionForm(s); break;
+    case "add-subject": subjectForm(null); break;
+    case "edit-subject": if (m) subjectForm(m); break;
+    case "del-subject": if (m) openConfirm(`Supprimer <b>${esc(m.name)}</b> et ses ${m.evals.length} évaluation(s) ?`, "Supprimer", () => { s.subjects = s.subjects.filter(x => x !== m); }); break;
+    case "toggle": if (m){ open.has(m.id) ? open.delete(m.id) : open.add(m.id); render(); } break;
+    case "add-eval": if (m) evalForm(m, null); break;
+    case "edit-eval": if (e) evalForm(m, e); break;
+    case "del-eval": if (e) openConfirm(`Supprimer l'évaluation <b>${esc(e.title)}</b> ?`, "Supprimer", () => { m.evals = m.evals.filter(x => x !== e); }); break;
+    case "settings": settingsModal(); break;
+    case "scale": state.scale = Number(el.dataset.v); save(); render(); settingsModal(); break;
+    case "example": loadExample(); save(); render(); break;
+  }
+});
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && $("modalRoot").innerHTML && !sync.conflict) closeModal(); });
+
+persistLocal(); render(); renderSync();
+setTimeout(() => { initSync(); getDownloads(); }, 0);
+// Mode hors ligne : le service worker garde l'app en cache (sites https, localhost et app Android)
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")){
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+})();
+</script>
+</body>
+</html>
