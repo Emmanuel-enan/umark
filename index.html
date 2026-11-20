@@ -122,6 +122,10 @@ h3{margin:0;font-size:17px;font-weight:600}
 .radio{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin-top:10px}
 .radio label{display:flex;gap:6px;align-items:center}
 @media (max-width:520px){.prow{grid-template-columns:auto 86px 1fr 50px;gap:5px}.prow input:not([type]){padding:7px 6px;font-size:13px}}
+.prow.gr{grid-template-columns:auto 1fr 64px 14px 56px;align-items:start}
+.prow.gr .gl{font-size:14px;font-weight:600;padding-top:2px}
+.prow.gr select{width:100%;margin-top:4px;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:13px}
+.prow.gr .sl{padding-top:8px;text-align:center;color:var(--muted)}
 .target{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--gold-soft);font-size:14px}
 .empty{text-align:center;padding:36px 20px;color:var(--muted)}
 .empty p{margin:0 0 14px}
@@ -482,7 +486,8 @@ function subjectCard(m){
       ${notes.join("")}
       <div class="subj-foot">
         <span class="btnrow"><button class="small" data-action="add-eval" data-sid="${esc(m.id)}">+ Évaluation</button>
-        <button class="ghost small" data-action="paste-scheme" data-sid="${esc(m.id)}">Plan de cours</button></span>
+        <button class="ghost small" data-action="paste-scheme" data-sid="${esc(m.id)}">Plan de cours</button>
+        <button class="ghost small" data-action="grades" data-sid="${esc(m.id)}">Mes notes</button></span>
         <span><button class="link small" data-action="edit-subject" data-sid="${esc(m.id)}">Modifier</button>
         <button class="link small" style="color:var(--low)" data-action="del-subject" data-sid="${esc(m.id)}">Supprimer</button></span>
       </div></div>`;
@@ -936,13 +941,15 @@ function parseScheme(text){
 // ---------- lecture de capture d'écran (reconnaissance de texte sur l'appareil) ----------
 const OCR_LIBS = ["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
                   "https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"];
-async function imageToText(file, onProgress){
+async function imageToText(file, onProgress, psm){
   for (const lib of OCR_LIBS){ try { await loadScript(lib); break; } catch (e) {} }
   if (!window.Tesseract) throw new Error("load");
   const worker = await window.Tesseract.createWorker(["fra", "eng"], 1, {
     logger: m => { if (m.status === "recognizing text" && onProgress) onProgress(Math.round(m.progress * 100)); }
   });
   try {
+    // psm 6 = lire l'image comme un seul bloc : garde chaque ligne d'un tableau ensemble (nom + note)
+    if (psm) await worker.setParameters({tessedit_pageseg_mode: String(psm)});
     const {data} = await worker.recognize(file);
     return data.text || "";
   } finally { worker.terminate(); }
@@ -953,6 +960,152 @@ function fixOcrCodes(text){
     const digits = d.replace(/[Oo]/g, "0").replace(/[Il|]/g, "1").replace(/S/g, "5").replace(/B/g, "8");
     return /^\d{4}$/.test(digits) && /\d/.test(d) ? `${a} ${digits}` : all;
   });
+}
+
+
+// ---------- import des notes (page « Notes » de Brightspace : capture ou texte) ----------
+const GRADE_SKIP = /(note finale|final calculated|calculated final|final grade|moyenne de la classe|class average|moyenne du cours|total|sous-total|subtotal|commentaires?|feedback|élément de note|grade item|pondération obtenue|weight achieved)/i;
+function parseGrades(text){
+  const lines = String(text || "").split(/\r?\n/)
+    .map(l => l.replace(/ {2,}|\t/g, "\t").replace(/[  ]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
+  const clean = t => t.replace(/^[\s:–—\-.…|•·*▪◦]+|[\s:–—\-.…|•·=(]+$/g, "").trim();
+  const label = l => (l.split("\t").map(clean).find(c => /[A-Za-zÀ-ÿ]{2,}/.test(c)) || "");
+  const out = [];
+  lines.forEach((line, i) => {
+    let score = null, max = null, at = -1;
+    let fr_ = null;
+    for (const m of line.matchAll(/(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/g)){
+      let a = num(m[1]); const b = num(m[2]);
+      if (!(b > 0) || !Number.isInteger(b) || b > 1000) continue;          // un « sur » est un nombre entier (20, 100…)
+      if (a > b && /^\d{2,3}$/.test(m[1]) && a / 10 <= b) a = a / 10;      // virgule perdue à la lecture : « 45/5 » = 4,5/5
+      if (a < 0 || a > b * 1.5) continue;
+      fr_ = {index: m.index, a, b}; break;
+    }
+    if (fr_){ score = fr_.a; max = fr_.b; at = fr_.index; }
+    else {
+      const pc = line.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
+      if (pc && num(pc[1]) <= 150){ score = num(pc[1]); max = 100; at = pc.index; }
+    }
+    if (at < 0) return;
+    let title = label(line.slice(0, at));
+    if (!title){
+      for (const j of [i - 1, i - 2]){
+        const l = lines[j];
+        if (l && !/\d\s*(\/|%)/.test(l)){ title = label(l); if (title) break; }
+      }
+    }
+    title = title.replace(/(\s+(?!#\d)[\d.,%#/|°-]+)+$/, "").replace(/\s+[a-z]{1,2}$/i, m => /^(tp|td|ii|iv)$/i.test(m.trim()) ? m : "").trim();
+    if (!title || title.length < 2 || GRADE_SKIP.test(title)) return;
+    if (title.length > 60) title = title.slice(0, 60).replace(/\s\S*$/, "") + "…";
+    out.push({title, score, max});
+  });
+  return out;
+}
+// Rapprochement d'un nom Brightspace avec une évaluation du cours
+function normTitle(t){
+  return " " + t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/mi-?session|midterm|mid-term|intra/g, " intra ").replace(/\bfinale?\b/g, " final ")
+    .replace(/travail pratique|travaux pratiques/g, " tp ").replace(/assignments?|devoirs?/g, " devoir ")
+    .replace(/\bexam(en)?s?\b/g, " examen ").replace(/\bquizz?(es)?\b/g, " quiz ")
+    .replace(/etudes? de cas|case stud(y|ies)/g, " cas ").replace(/[^a-z0-9]+/g, " ") + " ";
+}
+function titleSim(a, b){
+  const A = normTitle(a).trim().split(" ").filter(w => w.length > 1 || /\d/.test(w));
+  const B = normTitle(b).trim().split(" ").filter(w => w.length > 1 || /\d/.test(w));
+  const nA = A.filter(w => /\d/.test(w)), nB = B.filter(w => /\d/.test(w));
+  if (nA.length && nB.length && nA.join() !== nB.join()) return 0;      // « Quiz 1 » ≠ « Quiz 2 »
+  const stop = new Set(["de", "du", "des", "la", "le", "les", "et", "en", "of", "the", "and", "groupes", "groupe"]);
+  const a2 = A.filter(w => !stop.has(w)), b2 = B.filter(w => !stop.has(w));
+  if (!a2.length || !b2.length) return 0;
+  const common = a2.filter(w => b2.includes(w)).length;
+  return 2 * common / (a2.length + b2.length);
+}
+function matchGrades(found, evals){
+  const pairs = [];
+  found.forEach((g, i) => evals.forEach(e => { const sc = titleSim(g.title, e.title); if (sc >= 0.34) pairs.push({i, e, sc}); }));
+  pairs.sort((x, y) => y.sc - x.sc);
+  const usedG = new Set(), usedE = new Set();
+  for (const p of pairs){
+    if (usedG.has(p.i) || usedE.has(p.e.id)) continue;
+    found[p.i].match = p.e.id; usedG.add(p.i); usedE.add(p.e.id);
+  }
+  return found;
+}
+
+function gradesModal(m){
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal wide">
+    <h3>Mes notes · ${esc(m.code || m.name)}</h3>
+    <p class="help">Dans Brightspace, ouvre la page <b>Notes</b> du cours et fais une capture d'écran, puis importe-la ici. Umark lit tes notes et les place sur les bonnes évaluations. Astuce : sur téléphone, tourne l'écran à l'horizontale pour que chaque ligne du tableau tienne sur une seule ligne.</p>
+    <div class="btnrow"><button id="gimgBtn">Importer une capture d'écran</button></div>
+    <input type="file" id="gimg" accept="image/*" hidden>
+    <p class="note" id="gstatus" style="margin:8px 0 0"></p>
+    <p class="help" style="margin:14px 0 6px">Ou colle le texte de la page Notes :</p>
+    <div class="field"><textarea id="gtext" style="min-height:120px" placeholder="Examen intra   15,5 / 20   77,5 %&#10;Étude de cas #1   8 / 10"></textarea></div>
+    <div class="btnrow"><button id="gparse">Analyser</button></div>
+    <div id="gprev"></div>
+    <div class="modal-actions" style="margin-top:14px"><div class="right"><button class="ghost" data-close="1">Fermer</button></div></div>
+  </div></div>`;
+  $("gimgBtn").onclick = () => $("gimg").click();
+  $("gimg").onchange = async ev => {
+    const f = ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    const st = $("gstatus"), btn = $("gimgBtn");
+    st.className = "note"; st.textContent = "Lecture de l'image…"; btn.disabled = true;
+    try {
+      const text = await imageToText(f, pct => { st.textContent = `Lecture de l'image… ${pct} %`; }, 6);
+      $("gtext").value = text;
+      if (!parseGrades(text).length){ st.className = "note warn"; st.textContent = "Aucune note lue sur cette image. Essaie une capture plus nette (zoome sur le tableau des notes), ou colle le texte."; return; }
+      st.textContent = "Notes lues. Vérifie chaque ligne ci-dessous : la lecture d'image peut se tromper sur un chiffre.";
+      $("gparse").click();
+    } catch (err) {
+      st.className = "note warn";
+      st.textContent = "Impossible de lire l'image. La première fois, une connexion Internet est nécessaire (environ 10 Mo). Sinon, colle le texte.";
+    } finally { btn.disabled = false; }
+  };
+  $("gparse").onclick = () => {
+    const found = matchGrades(parseGrades($("gtext").value), m.evals);
+    if (!found.length){ $("gprev").innerHTML = `<p class="err" style="margin-top:10px">Aucune note trouvée. Le texte doit contenir des notes comme « 15,5 / 20 » ou « 85 % ».</p>`; return; }
+    const opts = sel => m.evals.map(e => `<option value="${esc(e.id)}" ${e.id === sel ? "selected" : ""}>${esc(e.title)}${m.mode === "pct" ? ` (${fr(e.weight, 2)} %)` : ""}</option>`).join("")
+      + `<option value="__new" ${sel === "__new" ? "selected" : ""}>+ Nouvelle évaluation</option>`;
+    const nMatch = found.filter(g => g.match).length;
+    $("gprev").innerHTML = `<div class="sect"><h4>${found.length} note${found.length > 1 ? "s" : ""} trouvée${found.length > 1 ? "s" : ""} · ${nMatch} reliée${nMatch > 1 ? "s" : ""} à tes évaluations</h4>
+      <p>Pour chaque note, vérifie le chiffre et l'évaluation choisie. Les notes non reliées sont décochées.</p>
+      <div class="prev">${found.map((g, i) => `<div class="prow gr ${g.match ? "" : "off"}">
+        <input type="checkbox" data-i="${i}" data-f="on" ${g.match ? "checked" : ""} aria-label="Importer">
+        <div><div class="gl">${esc(g.title)}</div><select data-i="${i}" data-f="to" aria-label="Évaluation">${opts(g.match || "__new")}</select></div>
+        <input data-i="${i}" data-f="score" value="${fr(g.score, 3)}" inputmode="decimal" aria-label="Note">
+        <div class="sl">/</div>
+        <input data-i="${i}" data-f="max" value="${fr(g.max, 3)}" inputmode="decimal" aria-label="Sur">
+      </div>`).join("")}</div>
+      <p class="err" id="gerr"></p>
+      <button id="gadd">Enregistrer les notes cochées</button></div>`;
+    const q = (i, f) => $("gprev").querySelector(`[data-i="${i}"][data-f="${f}"]`);
+    $("gprev").querySelectorAll('[data-f="on"]').forEach(cb => cb.onchange = () => cb.closest(".prow").classList.toggle("off", !cb.checked));
+    $("gprev").querySelectorAll('[data-f="to"]').forEach(sl => sl.onchange = () => {
+      const cb = q(sl.dataset.i, "on"); cb.checked = true; cb.closest(".prow").classList.remove("off");
+    });
+    $("gadd").onclick = () => {
+      const todo = [], seenE = new Set();
+      for (let i = 0; i < found.length; i++){
+        if (!q(i, "on").checked) continue;
+        const score = num(q(i, "score").value), max = num(q(i, "max").value), to = q(i, "to").value;
+        if (score === null || Number.isNaN(score) || score < 0 || !(max > 0)){ $("gerr").textContent = `Note invalide pour « ${found[i].title} ».`; return; }
+        if (to !== "__new"){
+          if (seenE.has(to)){ $("gerr").textContent = "Deux notes sont reliées à la même évaluation : corrige le choix."; return; }
+          seenE.add(to);
+        }
+        todo.push({to, score, max, title: found[i].title});
+      }
+      if (!todo.length){ $("gerr").textContent = "Coche au moins une note."; return; }
+      let created = 0;
+      for (const t of todo){
+        if (t.to === "__new"){ m.evals.push({id: uid(), title: t.title, score: t.score, max: t.max, weight: 0}); created++; }
+        else { const e = m.evals.find(x => x.id === t.to); if (e){ e.score = t.score; e.max = t.max; } }
+      }
+      open.add(m.id);
+      save(); closeModal(); render();
+      toast(`${todo.length} note${todo.length > 1 ? "s" : ""} enregistrée${todo.length > 1 ? "s" : ""}${created ? ` · ${created} nouvelle${created > 1 ? "s" : ""} évaluation${created > 1 ? "s" : ""} à pondérer (✎)` : ""}.`);
+    };
+  };
 }
 
 function importCoursesModal(){
@@ -1078,7 +1231,9 @@ function schemeModal(m){
     $("sparse").click();
   };
   $("sparse").onclick = () => {
-    const found = parseScheme($("stext").value);
+    const raw = $("stext").value, rawLines = raw.split(/\r?\n/);
+    // texte long (plan de cours entier collé) : on ne garde que le passage du barème
+    const found = parseScheme(rawLines.filter(l => l.trim()).length > 25 ? (pickScheme(rawLines) || raw) : raw);
     if (!found.length){ $("sprev").innerHTML = `<p class="err" style="margin-top:10px">Aucun pourcentage trouvé. Colle les lignes du barème (ex. « Examen final 40 % »).</p>`; return; }
     $("sprev").innerHTML = `<div class="sect"><h4>${found.length} évaluation${found.length > 1 ? "s" : ""} trouvée${found.length > 1 ? "s" : ""}</h4>
       <p>Corrige les intitulés ou les % si besoin. Les notes seront « à venir ».</p>
@@ -1161,6 +1316,7 @@ document.addEventListener("click", ev => {
     case "example": loadExample(); save(); render(); break;
     case "import-courses": importCoursesModal(); break;
     case "paste-scheme": if (m) schemeModal(m); break;
+    case "grades": if (m) gradesModal(m); break;
   }
 });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape" && $("modalRoot").innerHTML && !sync.conflict) closeModal(); });
