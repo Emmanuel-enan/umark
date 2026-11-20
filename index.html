@@ -723,7 +723,7 @@ function tryImport(text){
 
 /* ---------- import par collage ---------- */
 const CODE_RE = /\b([A-Z]{2,4})[  \-]?(\d{4}|\d{3}[A-Z]?)\b/g;
-const NOT_COURSE = /^(FALL|WINT|SPRG|SUMR|ROOM|PAGE|NOTE|TOTAL|GPA|CGPA|UTC|GMT|EST|EDT)$/;
+const NOT_COURSE = /^(FALL|WINT|SPRG|SUMR|ROOM|PAGE|NOTE|TOTAL|GPA|CGPA|UTC|GMT|EST|EDT|JAN|FEB|FEV|MAR|MARS|APR|AVR|MAY|MAI|JUN|JUIN|JUL|AUG|AOUT|SEP|SEPT|OCT|NOV|DEC|DÉC)$/;
 function cleanName(t){
   if (!t) return "";
   // dans un tableau collé, le nom est la première « cellule » qui contient des lettres
@@ -738,28 +738,48 @@ function cleanName(t){
        .replace(/\s{2,}/g, " ").trim();
   return n.length >= 3 ? n : "";
 }
+const ACT_RE = /\b(LEC|LAB|DGD|TUT|SEM|TLB|STG|Cours magistral|Lecture|Laboratoire|Tutoriel|Tutorial)\b/i;
+// Pavillons de l'Université d'Ottawa : « DMS 1110 » est une salle, pas un cours
+const BUILDINGS = new Set(["DMS","FSS","STE","MRT","CBY","SITE","LMX","TBT","MNT","HGN","VNR","SMD","CRX","LPR","GNN","ARC","KED","MCD","THN","DRO","UCU","SCR","LEE","BSC","RGN","MHN","FTX","PRZ","SMN","ANX","GSD","CTR","ROG","RES","HSY","ALX","AMN","MCE","LRC","CHO","FNH","SAN","JRR","MAN","MNO","OHD","PCR","SCS","SMR","SPT","TBH","WLD","WTN"]);
+const CODE_ANY = /\b[A-Z]{2,4}[  \-]?\d{3,4}/;
 function parseCourses(text){
   const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const out = [], seen = new Set();
   lines.forEach((line, i) => {
-    const ms = [...line.matchAll(CODE_RE)].filter(m => !NOT_COURSE.test(m[1]) && !/^(19|20)\d\d$/.test(m[2]));
+    const ms = [...line.matchAll(CODE_RE)].filter(m => !NOT_COURSE.test(m[1]));
     if (!ms.length) return;
     const m = ms[0];                                   // 1er code de la ligne (les suivants sont souvent des salles)
     const code = m[1] + m[2];
     if (seen.has(code)) return;
     seen.add(code);
-    const end = ms.length > 1 ? ms[1].index : line.length;
-    let name = cleanName(line.slice(m.index + m[0].length, end));
-    if (!name && i + 1 < lines.length && !/\b[A-Z]{2,4}[ \u00a0\-]?\d{3,4}/.test(lines[i + 1])) name = cleanName(lines[i + 1]);
-    const cr = line.match(/(\d+(?:[.,]\d+)?)\s*(?:crédits?|credits?|units?|unités?|cr\.?)(?![a-z])/i);
-    let credits = cr ? num(cr[1]) : null;
-    if (credits === null){
-      // colonne « Unités » d'un tableau (ex. 3,00 ou 0.50), sur la ligne ou la suivante
-      const near = [line.slice(m.index + m[0].length), lines[i + 1] && !/\b[A-Z]{2,4}[ \u00a0\-]?\d{4}\b/.test(lines[i + 1].split(/\t/)[0]) ? lines[i + 1] : ""].join("\t");
-      const cell = near.split(/\t| {2,}/).map(c => c.trim()).find(c => /^\d{1,2}[.,]\d{2}$/.test(c));
-      if (cell && num(cell) > 0 && num(cell) <= 12) credits = num(cell);
+    const after = ms.length > 1 ? ms[1].index : line.length;
+    let name = cleanName(line.slice(m.index + m[0].length, after));
+    if (!name && i + 1 < lines.length && !CODE_ANY.test(lines[i + 1])) name = cleanName(lines[i + 1]);
+    // nom coupé sur deux lignes (capture d'écran) : « … gestion des » + « affaires »
+    else if (name && i + 1 < lines.length){
+      const nx = lines[i + 1];
+      if (/^[a-zà-ÿ]/.test(nx) && nx.length <= 40 && !/\d/.test(nx) && !CODE_ANY.test(nx) && !ACT_RE.test(nx)) name = (name + " " + nx).trim();
     }
-    out.push({code, name, credits, checked: !!name});
+    // crédits : sur la ligne, ou dans les lignes suivantes jusqu'au cours suivant
+    let credits = null;
+    for (let k = i; k < Math.min(lines.length, i + 4); k++){
+      const l = k === i ? line.slice(m.index + m[0].length) : lines[k];
+      if (k > i){
+        const mk = l.match(CODE_RE); CODE_RE.lastIndex = 0;
+        if (mk && cleanName(l.slice(l.indexOf(mk[0]) + mk[0].length))) break;   // ligne d'un autre cours
+      }
+      const cr = l.match(/(\d+(?:[.,]\d+)?)\s*(?:crédits?|credits?|units?|unités?|cr\.?)(?![a-z])/i);
+      if (cr){ credits = num(cr[1]); break; }
+      if (k <= i + 1){
+        const cell = l.split(/\t| {2,}/).map(c => c.trim()).find(c => /^\d{1,2}[.,]\d{2}$/.test(c));
+        if (cell && num(cell) > 0 && num(cell) <= 12){ credits = num(cell); break; }
+      }
+    }
+    // sans nom (horaire en grille) : cours si suivi d'un type d'activité (LEC, DGD…), salle si pavillon connu ou placé après l'activité
+    const prevAct = i > 0 && ACT_RE.test(lines[i - 1]), nextAct = i + 1 < lines.length && ACT_RE.test(lines[i + 1]);
+    const room = !name && (BUILDINGS.has(m[1]) || (prevAct && !nextAct));
+    const course = !!name || (!room && (nextAct || !prevAct));
+    out.push({code, name, credits: credits > 0 && credits <= 12 ? credits : null, checked: course, room, noName: !name && course});
   });
   return out;
 }
@@ -913,16 +933,61 @@ function parseScheme(text){
   return out;
 }
 
+// ---------- lecture de capture d'écran (reconnaissance de texte sur l'appareil) ----------
+const OCR_LIBS = ["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
+                  "https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"];
+async function imageToText(file, onProgress){
+  for (const lib of OCR_LIBS){ try { await loadScript(lib); break; } catch (e) {} }
+  if (!window.Tesseract) throw new Error("load");
+  const worker = await window.Tesseract.createWorker(["fra", "eng"], 1, {
+    logger: m => { if (m.status === "recognizing text" && onProgress) onProgress(Math.round(m.progress * 100)); }
+  });
+  try {
+    const {data} = await worker.recognize(file);
+    return data.text || "";
+  } finally { worker.terminate(); }
+}
+// La lecture d'image confond parfois O/0, I/1, S/5, B/8 dans les codes : on corrige la partie chiffrée.
+function fixOcrCodes(text){
+  return String(text).replace(/\b([A-Z]{2,4})[ \u00a0\-]?([0-9OoIlSB|]{4})\b/g, (all, a, d) => {
+    const digits = d.replace(/[Oo]/g, "0").replace(/[Il|]/g, "1").replace(/S/g, "5").replace(/B/g, "8");
+    return /^\d{4}$/.test(digits) && /\d/.test(d) ? `${a} ${digits}` : all;
+  });
+}
+
 function importCoursesModal(){
   $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal wide">
     <h3>Coller mon horaire</h3>
-    <p class="help">Copie la liste de tes cours depuis ton portail étudiant (uoZone, Centre étudiant…), ton horaire ou ton relevé, puis colle-la ici. Umark repère les codes de cours (ex. ADM 1700) et leur nom.</p>
+    <p class="help">Importe une capture d'écran de ton horaire (uoZone, Centre étudiant…), ou colle la liste de tes cours. Umark repère les codes de cours (ex. ADM 1700) et leur nom.</p>
+    <div class="btnrow"><button id="cimgBtn">Importer une capture d'écran</button></div>
+    <input type="file" id="cimg" accept="image/*" hidden>
+    <p class="note" id="cstatus" style="margin:8px 0 0"></p>
+    <p class="help" style="margin:14px 0 6px">Ou colle le texte :</p>
     <div class="field"><textarea id="ctext" style="min-height:140px" placeholder="ADM 1700 - Introduction à la gestion des affaires&#10;ECO 1504 - Introduction à la microéconomie&#10;MAT 1739 - …"></textarea></div>
     <div class="btnrow"><button id="cparse">Analyser</button></div>
     <div id="cprev"></div>
     <div class="modal-actions" style="margin-top:14px"><div class="right"><button class="ghost" data-close="1">Fermer</button></div></div>
   </div></div>`;
-  setTimeout(() => $("ctext").focus(), 30);
+  $("cimgBtn").onclick = () => $("cimg").click();
+  $("cimg").onchange = async ev => {
+    const f = ev.target.files[0]; ev.target.value = ""; if (!f) return;
+    const st = $("cstatus"), btn = $("cimgBtn");
+    st.className = "note"; st.textContent = "Lecture de l'image…"; btn.disabled = true;
+    try {
+      const text = await imageToText(f, pct => { st.textContent = `Lecture de l'image… ${pct} %`; });
+      const fixed = fixOcrCodes(text);
+      if (!parseCourses(fixed).length){
+        st.className = "note warn"; st.textContent = "Aucun code de cours lu sur cette image. Essaie une capture plus nette (zoome sur la liste des cours), ou colle le texte.";
+        $("ctext").value = fixed; return;
+      }
+      $("ctext").value = fixed;
+      st.textContent = "Texte lu. Vérifie la liste ci-dessous : la lecture d'image peut se tromper sur certains noms.";
+      $("cparse").click();
+    } catch (err) {
+      st.className = "note warn";
+      st.textContent = "Impossible de lire l'image. La première fois, une connexion Internet est nécessaire (environ 10 Mo). Sinon, colle le texte.";
+    } finally { btn.disabled = false; }
+  };
   $("cparse").onclick = () => {
     const found = parseCourses($("ctext").value);
     if (!found.length){ $("cprev").innerHTML = `<p class="err" style="margin-top:10px">Aucun code de cours trouvé. Vérifie que le texte contient des codes comme « ADM 1700 ».</p>`; return; }
@@ -940,7 +1005,7 @@ function coursePreview(found){
     <div class="prev">${found.map((c, i) => `<div class="prow ${c.checked ? "" : "off"}">
       <input type="checkbox" data-i="${i}" data-f="on" ${c.checked ? "checked" : ""} aria-label="Ajouter ${esc(c.code)}">
       <input data-i="${i}" data-f="code" value="${esc(c.code)}" aria-label="Code">
-      <div><input data-i="${i}" data-f="name" value="${esc(c.name)}" placeholder="Nom du cours" aria-label="Nom" style="width:100%">${c.dup ? `<div class="tag">déjà dans la session</div>` : (!c.name ? `<div class="tag">à vérifier (salle ? autre ?)</div>` : "")}</div>
+      <div><input data-i="${i}" data-f="name" value="${esc(c.name)}" placeholder="Nom du cours" aria-label="Nom" style="width:100%">${c.dup ? `<div class="tag">déjà dans la session</div>` : c.room ? `<div class="tag">salle de cours ?</div>` : c.noName ? `<div class="tag">nom à compléter</div>` : (!c.name ? `<div class="tag">à vérifier</div>` : "")}</div>
       <input data-i="${i}" data-f="credits" value="${c.credits ? fr(c.credits, 2) : ""}" placeholder="crédits" inputmode="decimal" aria-label="Crédits">
     </div>`).join("")}</div>
     <div class="two" style="margin-top:12px">
