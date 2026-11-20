@@ -108,6 +108,20 @@ h3{margin:0;font-size:17px;font-weight:600}
 .subj-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
 .note{font-size:13px;color:var(--muted);margin:8px 0 0}
 .note.warn{color:var(--mid)}
+.modal.wide{max-width:660px}
+.help{margin:0 0 12px;color:var(--muted);font-size:14px}
+.prev{display:flex;flex-direction:column;gap:6px;max-height:44vh;overflow:auto;padding:2px}
+.prow{display:grid;grid-template-columns:auto 96px 1fr 70px;gap:6px;align-items:center}
+.prow.sch{grid-template-columns:auto 1fr 80px}
+.prow input[type=text],.prow input:not([type]){width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:14px;min-width:0}
+.prow input[type=checkbox]{width:18px;height:18px;accent-color:var(--navy)}
+.prow.off input:not([type=checkbox]){opacity:.45}
+.tag{font-size:11px;color:var(--mid);font-weight:600}
+.total{margin:10px 0 0;font-size:14px;font-weight:600}
+.total.warn{color:var(--mid)}
+.radio{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;margin-top:10px}
+.radio label{display:flex;gap:6px;align-items:center}
+@media (max-width:520px){.prow{grid-template-columns:auto 86px 1fr 50px;gap:5px}.prow input:not([type]){padding:7px 6px;font-size:13px}}
 .target{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--gold-soft);font-size:14px}
 .empty{text-align:center;padding:36px 20px;color:var(--muted)}
 .empty p{margin:0 0 14px}
@@ -155,7 +169,7 @@ table.scale td{padding:3px 6px;border-bottom:1px solid var(--line)}
 <div class="wrap">
   <nav id="sessions" aria-label="Sessions"></nav>
   <section id="summary" class="card"></section>
-  <div class="row-head"><h2>Cours</h2><button class="small" data-action="add-subject">+ Cours</button></div>
+  <div class="row-head"><h2>Cours</h2><div class="btnrow"><button class="ghost small" data-action="import-courses">Coller mon horaire</button><button class="small" data-action="add-subject">+ Cours</button></div></div>
   <div id="subjects"></div>
 </div>
 <div id="modalRoot"></div>
@@ -419,7 +433,7 @@ function render(){
 
   if (!s.subjects.length){
     $("subjects").innerHTML = `<div class="card empty"><p>Aucun cours dans cette session.</p>
-      <div class="btnrow" style="justify-content:center"><button data-action="add-subject">Ajouter un cours</button>
+      <div class="btnrow" style="justify-content:center"><button data-action="import-courses">Coller mon horaire</button><button class="ghost" data-action="add-subject">Ajouter à la main</button>
       <button class="ghost" data-action="example">Voir un exemple</button></div></div>`;
     return;
   }
@@ -464,10 +478,11 @@ function subjectCard(m){
       notes.push(`<div class="target">${msg}</div>`);
     }
     body = `<div class="evals">
-      ${rows || `<p class="note">Aucune évaluation pour l'instant.</p>`}
+      ${rows || `<p class="note">Aucune évaluation pour l'instant. Le plus rapide : bouton <b>Plan de cours</b>, puis importe le syllabus de Brightspace.</p>`}
       ${notes.join("")}
       <div class="subj-foot">
-        <button class="small" data-action="add-eval" data-sid="${esc(m.id)}">+ Évaluation</button>
+        <span class="btnrow"><button class="small" data-action="add-eval" data-sid="${esc(m.id)}">+ Évaluation</button>
+        <button class="ghost small" data-action="paste-scheme" data-sid="${esc(m.id)}">Plan de cours</button></span>
         <span><button class="link small" data-action="edit-subject" data-sid="${esc(m.id)}">Modifier</button>
         <button class="link small" style="color:var(--low)" data-action="del-subject" data-sid="${esc(m.id)}">Supprimer</button></span>
       </div></div>`;
@@ -656,7 +671,6 @@ function settingsModal(){
   const showJson = () => { $("jsonOutWrap").style.display = "block"; $("jsonOut").value = exportJson(); };
   $("expBtn").onclick = async () => {
     if (!(window.claude && typeof window.claude.use === "function")){
-      // App installée : feuille de partage du téléphone (Fichiers, Drive, e-mail…), sinon téléchargement classique
       try {
         const file = new File([exportJson()], exportName(), {type: "application/json"});
         if (navigator.canShare && navigator.canShare({files: [file]})){
@@ -706,6 +720,343 @@ function tryImport(text){
   });
 }
 
+
+/* ---------- import par collage ---------- */
+const CODE_RE = /\b([A-Z]{2,4})[  \-]?(\d{4}|\d{3}[A-Z]?)\b/g;
+const NOT_COURSE = /^(FALL|WINT|SPRG|SUMR|ROOM|PAGE|NOTE|TOTAL|GPA|CGPA|UTC|GMT|EST|EDT)$/;
+function cleanName(t){
+  if (!t) return "";
+  // dans un tableau collé, le nom est la première « cellule » qui contient des lettres
+  const cells = t.split(/\t| {2,}| \| /).map(c => c.trim()).filter(Boolean);
+  let n = cells.find(c => /[A-Za-zÀ-ÿ]{3,}/.test(c.replace(/\b(LEC|LAB|DGD|TUT|SEM|TLB|STG)\b/g, ""))) || "";
+  n = n.replace(/^[A-Z]\d{0,2}\s*[-–—:]\s*/, "")                          // « A - » : section devant le nom
+       .replace(/\b[A-Z]\d{2}\b/g, "")                                   // section : A00, Z01
+       .replace(/\b(LEC|LAB|DGD|TUT|SEM|TLB|STG)\b/g, "")
+       .replace(/\(?\s*\d+(?:[.,]\d+)?\s*(?:crédits?|credits?|units?|unités?|cr\.?)\s*\)?/gi, "")
+       .replace(/\d{1,2}\s?[:h]\s?\d{2}.*$/i, "")                         // à partir d'une heure : horaire, salle…
+       .replace(/^[\s\-–—:|•·,.()]+|[\s\-–—:|•·,(]+$/g, "")
+       .replace(/\s{2,}/g, " ").trim();
+  return n.length >= 3 ? n : "";
+}
+function parseCourses(text){
+  const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const out = [], seen = new Set();
+  lines.forEach((line, i) => {
+    const ms = [...line.matchAll(CODE_RE)].filter(m => !NOT_COURSE.test(m[1]) && !/^(19|20)\d\d$/.test(m[2]));
+    if (!ms.length) return;
+    const m = ms[0];                                   // 1er code de la ligne (les suivants sont souvent des salles)
+    const code = m[1] + m[2];
+    if (seen.has(code)) return;
+    seen.add(code);
+    const end = ms.length > 1 ? ms[1].index : line.length;
+    let name = cleanName(line.slice(m.index + m[0].length, end));
+    if (!name && i + 1 < lines.length && !/\b[A-Z]{2,4}[ \u00a0\-]?\d{3,4}/.test(lines[i + 1])) name = cleanName(lines[i + 1]);
+    const cr = line.match(/(\d+(?:[.,]\d+)?)\s*(?:crédits?|credits?|units?|unités?|cr\.?)(?![a-z])/i);
+    let credits = cr ? num(cr[1]) : null;
+    if (credits === null){
+      // colonne « Unités » d'un tableau (ex. 3,00 ou 0.50), sur la ligne ou la suivante
+      const near = [line.slice(m.index + m[0].length), lines[i + 1] && !/\b[A-Z]{2,4}[ \u00a0\-]?\d{4}\b/.test(lines[i + 1].split(/\t/)[0]) ? lines[i + 1] : ""].join("\t");
+      const cell = near.split(/\t| {2,}/).map(c => c.trim()).find(c => /^\d{1,2}[.,]\d{2}$/.test(c));
+      if (cell && num(cell) > 0 && num(cell) <= 12) credits = num(cell);
+    }
+    out.push({code, name, credits, checked: !!name});
+  });
+  return out;
+}
+const GRADE_SCALE = /\d{2,3}\s*%?\s*(?:-|–|—|à|to)\s*\d{2,3}\s*%|(?:^|\s)(?:A\+|A-|B\+|B-|C\+|C-|D\+|D-)(?:\s|$|[:=])/;
+const NOISE = /(pénalit|penalt|retard|\blate\b|par jour|per day|minimum|au moins|at least|réduction|deduct|plagi|\btaxe?s?\b|rabais|discount|absence|attendance requirement)/i;
+const HEAD_RE = /(évaluation|evaluation|barème|bareme|pondération|ponderation|répartition|repartition|modalités|grading|assessment|marking|notation|calcul de la note|course grade|breakdown)/i;
+
+// Dans un plan de cours complet, trouve le passage qui contient le barème :
+// le groupe de lignes avec des % dont le total se rapproche le plus de 100 %, de préférence sous un titre « Évaluation ».
+function pickScheme(rawLines){
+  const lines = rawLines.map(l => String(l).replace(/ {2,}|\t/g, "\t").replace(/[ \u00a0]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
+  const cand = [];
+  lines.forEach((l, i) => { if (/\d{1,3}(?:[.,]\d+)?\s*%/.test(l) && !GRADE_SCALE.test(l)) cand.push(i); });
+  if (!cand.length) return null;
+  // on essaie chaque suite de lignes à % (sans trou de plus de 8 lignes) et on garde la plus plausible
+  let best = null;
+  for (let a = 0; a < cand.length; a++){
+    const start = cand[a];
+    const from = Math.max(a ? cand[a - 1] + 1 : 0, start - 2);
+    const head = lines.slice(Math.max(0, start - 12), start + 1).some(l => HEAD_RE.test(l) && l.length < 90);
+    for (let b = a; b < cand.length && b - a < 30; b++){
+      if (b > a && cand[b] - cand[b - 1] > 8) break;
+      const end = cand[b];
+      const items = parseScheme(lines.slice(from, end + 1).join("\n")).filter(e => e.checked);
+      if (!items.length) continue;
+      const sum = items.reduce((t, e) => t + e.weight, 0);
+      const score = Math.abs(sum - 100) + (head ? 0 : 8) - Math.min(items.length, 10) * 0.01;
+      if (!best || score < best.score - 1e-9) best = {score, from, end};
+    }
+  }
+  return best ? lines.slice(best.from, best.end + 1).join("\n") : null;
+}
+
+// Lecteurs PDF et Word, chargés seulement au premier import (2 sources au cas où l'une ne répond pas)
+const LIBS = {
+  pdf: [["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js", "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"],
+        ["https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js", "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"]],
+  docx: ["https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js",
+         "https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"]
+};
+const scriptsLoading = {};
+function loadScript(src){
+  if (!scriptsLoading[src]) scriptsLoading[src] = new Promise((res, rej) => {
+    const el = document.createElement("script");
+    el.src = src; el.onload = res;
+    el.onerror = () => { delete scriptsLoading[src]; el.remove(); rej(new Error("load")); };
+    document.head.appendChild(el);
+  });
+  return scriptsLoading[src];
+}
+// Lit un PDF, un Word (.docx) ou un .txt et renvoie ses lignes de texte (tout se passe sur l'appareil)
+async function fileToLines(file){
+  const name = (file.name || "").toLowerCase();
+  if (name.endsWith(".pdf") || file.type === "application/pdf"){
+    let workerSrc = null;
+    for (const [lib, worker] of LIBS.pdf){
+      try { await loadScript(lib); workerSrc = worker; break; } catch (e) {}
+    }
+    const pdfjs = window.pdfjsLib;
+    if (!pdfjs) throw new Error("load");
+    pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+    const doc = await pdfjs.getDocument({data: await file.arrayBuffer()}).promise;
+    const lines = [];
+    for (let p = 1; p <= Math.min(doc.numPages, 40); p++){
+      const page = await doc.getPage(p);
+      const tc = await page.getTextContent();
+      const rows = [];
+      for (const it of tc.items){
+        if (!it.str || !it.str.trim()) continue;
+        const y = it.transform[5], x = it.transform[4];
+        let r = rows.find(r => Math.abs(r.y - y) < 3);
+        if (!r){ r = {y, items: []}; rows.push(r); }
+        r.items.push({x, w: it.width || 0, s: it.str});
+      }
+      rows.sort((a, b) => b.y - a.y);
+      for (const r of rows){
+        r.items.sort((a, b) => a.x - b.x);
+        let out = "", prevEnd = null;
+        for (const it of r.items){
+          if (prevEnd !== null && it.x - prevEnd > 1.5) out += (it.x - prevEnd > 20 ? "\t" : " ");
+          out += it.s; prevEnd = it.x + it.w;
+        }
+        lines.push(out);
+      }
+    }
+    return lines;
+  }
+  if (name.endsWith(".docx")){
+    for (const lib of LIBS.docx){ try { await loadScript(lib); break; } catch (e) {} }
+    if (!window.mammoth) throw new Error("load");
+    const r = await window.mammoth.extractRawText({arrayBuffer: await file.arrayBuffer()});
+    return r.value.split(/\n/);
+  }
+  if (name.endsWith(".txt")) return (await file.text()).split(/\n/);
+  throw new Error("format");
+}
+
+function parseScheme(text){
+  const lines = String(text || "").split(/\r?\n/)
+    .map(l => l.replace(/ {2,}|\t/g, "\t").replace(/[ \u00a0]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
+  const out = [];
+  let prev = "";
+  const clean = t => t.replace(/^\s*(?:\d+[.)]|[-•·*–—▪◦])\s*/, "")
+                      .replace(/[\s:–—\-.…|•·=_]+$/g, "").replace(/^[\s:–—\-.…|•·=_(]+/g, "")
+                      .replace(/\(\s*$/, "").trim();
+  // intitulé voisin : quand la ligne du % n'a pas de nom (tableau sur plusieurs lignes)
+  const label = l => (l.split("\t").map(clean).find(c => /[A-Za-zÀ-ÿ]{2,}/.test(c)) || "");
+  const nearTitle = i => {
+    for (const j of [i - 1, i - 2, i - 3, i + 1]){
+      const l = lines[j];
+      if (!l || /\d\s*%/.test(l)) continue;
+      const c = label(l);
+      if (c && c.length <= 45 && /^[A-ZÀ-Ý]/.test(c) && !/^\(/.test(c)){
+        // nom coupé sur deux lignes (« DGD / Groupes de » + « discussion »)
+        if (/\s(de|des|du|d'|et|la|le|en|of|and|the)$/i.test(c)){
+          for (const k of [j + 1, i + 1, i + 2]){
+            const n = lines[k] && k !== i ? label(lines[k]) : "";
+            if (n && /^[a-zà-ÿ]/.test(n) && n.length <= 20 && n.split(" ").length <= 2) return c + " " + n;
+          }
+        }
+        return c;
+      }
+    }
+    return "";
+  };
+  for (let li = 0; li < lines.length; li++){
+    const line = lines[li];
+    if (GRADE_SCALE.test(line)){ prev = ""; continue; }
+    const multi = line.match(/(\d+)\s*[x×]\s*(\d{1,3}(?:[.,]\d+)?)\s*%/i);
+    const pm = line.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
+    if (!pm){ prev = line.length < 80 ? line : ""; continue; }
+    const at = multi ? multi.index : pm.index;
+    // intitulé = 1re colonne avec des lettres avant le % (les colonnes suivantes sont souvent des dates)
+    const cells = line.slice(0, at).split("\t").map(clean).filter(c => /[A-Za-zÀ-ÿ]{2,}/.test(c));
+    let title = cells[0] || "";
+    if (title.length < 2) title = clean(line.slice(at + (multi ? multi[0] : pm[0]).length).replace(/^[^A-Za-zÀ-ÿ]+/, "").split(/[(,;\t]/)[0]);
+    if (title.length < 2) title = nearTitle(li) || clean(prev.split("\t")[0]) || "Évaluation";
+    if (title.length > 70) title = title.slice(0, 70).replace(/\s\S*$/, "") + "…";
+    prev = "";
+    if (/^(total|note finale|final grade|grand total|sous-total)\b/i.test(title)) continue;
+    if (multi){
+      const n = Math.min(+multi[1], 20), w = num(multi[2]);
+      for (let k = 1; k <= n; k++) out.push({title: `${title} ${k}`, weight: w, checked: true});
+    } else {
+      const w = num(pm[1]);
+      // « [10 % chacune] », « [5 %] » : détail d'une composante déjà comptée, pas une évaluation en plus
+      const detail = /\[[^\]]*\d\s*%[^\]]*\]/.test(line) || /\b(chacun|chacune|each)\b/i.test(line);
+      out.push({title, weight: w, checked: w > 0 && w <= 100 && !NOISE.test(line) && !detail});
+    }
+  }
+  return out;
+}
+
+function importCoursesModal(){
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal wide">
+    <h3>Coller mon horaire</h3>
+    <p class="help">Copie la liste de tes cours depuis ton portail étudiant (uoZone, Centre étudiant…), ton horaire ou ton relevé, puis colle-la ici. Umark repère les codes de cours (ex. ADM 1700) et leur nom.</p>
+    <div class="field"><textarea id="ctext" style="min-height:140px" placeholder="ADM 1700 - Introduction à la gestion des affaires&#10;ECO 1504 - Introduction à la microéconomie&#10;MAT 1739 - …"></textarea></div>
+    <div class="btnrow"><button id="cparse">Analyser</button></div>
+    <div id="cprev"></div>
+    <div class="modal-actions" style="margin-top:14px"><div class="right"><button class="ghost" data-close="1">Fermer</button></div></div>
+  </div></div>`;
+  setTimeout(() => $("ctext").focus(), 30);
+  $("cparse").onclick = () => {
+    const found = parseCourses($("ctext").value);
+    if (!found.length){ $("cprev").innerHTML = `<p class="err" style="margin-top:10px">Aucun code de cours trouvé. Vérifie que le texte contient des codes comme « ADM 1700 ».</p>`; return; }
+    coursePreview(found);
+  };
+}
+function coursePreview(found){
+  const target0 = curSession();
+  const has = (s, code) => s.subjects.some(x => x.code.replace(/\s/g, "").toUpperCase() === code.replace(/\s/g, "").toUpperCase());
+  found.forEach(c => { if (has(target0, c.code)){ c.checked = false; c.dup = true; } });
+  const opts = state.sessions.map(x => `<option value="${esc(x.id)}" ${x.id === target0.id ? "selected" : ""}>${esc(x.name)}</option>`).join("") + `<option value="__new">+ Nouvelle session…</option>`;
+  $("cprev").innerHTML = `<div class="sect">
+    <h4>${found.length} cours trouvé${found.length > 1 ? "s" : ""}</h4>
+    <p>Vérifie les noms et les crédits, décoche ce qui n'est pas un cours, puis ajoute.</p>
+    <div class="prev">${found.map((c, i) => `<div class="prow ${c.checked ? "" : "off"}">
+      <input type="checkbox" data-i="${i}" data-f="on" ${c.checked ? "checked" : ""} aria-label="Ajouter ${esc(c.code)}">
+      <input data-i="${i}" data-f="code" value="${esc(c.code)}" aria-label="Code">
+      <div><input data-i="${i}" data-f="name" value="${esc(c.name)}" placeholder="Nom du cours" aria-label="Nom" style="width:100%">${c.dup ? `<div class="tag">déjà dans la session</div>` : (!c.name ? `<div class="tag">à vérifier (salle ? autre ?)</div>` : "")}</div>
+      <input data-i="${i}" data-f="credits" value="${c.credits ? fr(c.credits, 2) : ""}" placeholder="crédits" inputmode="decimal" aria-label="Crédits">
+    </div>`).join("")}</div>
+    <div class="two" style="margin-top:12px">
+      <div class="field"><label for="csess">Ajouter dans</label><select id="csess">${opts}</select></div>
+      <div class="field" id="cnewWrap" style="display:none"><label for="cnew">Nom de la session</label><input id="cnew" placeholder="Hiver 2027"></div>
+    </div>
+    <p class="err" id="cerr"></p>
+    <button id="cadd">Ajouter les cours cochés</button></div>`;
+  const q = (i, f) => $("cprev").querySelector(`[data-i="${i}"][data-f="${f}"]`);
+  $("cprev").querySelectorAll('[data-f="on"]').forEach(cb => cb.onchange = () => cb.closest(".prow").classList.toggle("off", !cb.checked));
+  $("csess").onchange = e => { $("cnewWrap").style.display = e.target.value === "__new" ? "block" : "none"; };
+  $("cadd").onclick = () => {
+    let target;
+    if ($("csess").value === "__new"){
+      const nm = $("cnew").value.trim();
+      if (!nm){ $("cerr").textContent = "Donne un nom à la nouvelle session."; return; }
+      target = {id: uid(), name: nm, subjects: []}; state.sessions.push(target);
+    } else target = state.sessions.find(x => x.id === $("csess").value) || curSession();
+    let added = 0, skipped = 0;
+    found.forEach((c, i) => {
+      if (!q(i, "on").checked) return;
+      const code = q(i, "code").value.trim();
+      const name = q(i, "name").value.trim() || code;
+      const cr = num(q(i, "credits").value);
+      if (code && has(target, code)){ skipped++; return; }
+      target.subjects.push({id: uid(), name, code, credits: cr > 0 ? cr : null, mode: "pct", target: null, evals: []});
+      added++;
+    });
+    if (!added && !skipped){ $("cerr").textContent = "Coche au moins un cours."; return; }
+    state.active = target.id;
+    save(); closeModal(); render();
+    toast(`${added} cours ajouté${added > 1 ? "s" : ""}${skipped ? ` · ${skipped} déjà présent${skipped > 1 ? "s" : ""}` : ""}. Ouvre un cours puis « Plan de cours ».`);
+  };
+}
+
+function schemeModal(m){
+  const hasScores = m.evals.some(e => e.score !== null);
+  $("modalRoot").innerHTML = `<div class="overlay" data-close="1"><div class="modal wide">
+    <h3>Plan de cours · ${esc(m.code || m.name)}</h3>
+    <p class="help">Télécharge le plan de cours (syllabus) depuis Brightspace, puis importe-le ici : Umark trouve le barème tout seul. Le fichier est lu sur ton appareil, il n'est envoyé nulle part.</p>
+    <div class="btnrow"><button id="sfileBtn">Importer le plan de cours (PDF ou Word)</button></div>
+    <input type="file" id="sfile" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden>
+    <p class="note" id="sstatus" style="margin:8px 0 0"></p>
+    <p class="help" style="margin:14px 0 6px">Ou colle le texte de la section « Évaluation » :</p>
+    <div class="field"><textarea id="stext" style="min-height:140px" placeholder="Quiz (5 x 2 %)&#10;Examen de mi-session ........ 30 %&#10;Travail d'équipe : 20 %&#10;Examen final 40 %"></textarea></div>
+    <div class="btnrow"><button id="sparse">Analyser</button></div>
+    <div id="sprev"></div>
+    <div class="modal-actions" style="margin-top:14px"><div class="right"><button class="ghost" data-close="1">Fermer</button></div></div>
+  </div></div>`;
+  $("sfileBtn").onclick = () => $("sfile").click();
+  $("sfile").onchange = async ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    const st = $("sstatus"); st.className = "note"; st.textContent = "Lecture du document…";
+    let lines;
+    try { lines = await fileToLines(f); }
+    catch (err){
+      st.className = "note warn";
+      st.textContent = err && err.message === "format" ? "Format non pris en charge : utilise un PDF ou un fichier Word (.docx)."
+        : "Impossible de lire ce fichier. La première fois, une connexion Internet est nécessaire. Sinon, colle le texte du barème ci-dessous.";
+      ev.target.value = ""; return;
+    }
+    ev.target.value = "";
+    if (lines.join("").replace(/\s/g, "").length < 40){
+      st.className = "note warn"; st.textContent = "Ce document ne contient pas de texte lisible (PDF scanné ?). Colle le texte du barème ci-dessous."; return;
+    }
+    const section = pickScheme(lines);
+    if (!section){ st.className = "note warn"; st.textContent = "Aucun barème trouvé dans ce document. Colle la section « Évaluation » ci-dessous."; return; }
+    $("stext").value = section;
+    st.className = "note"; st.textContent = `Barème trouvé dans « ${f.name} ». Vérifie ci-dessous avant de créer les évaluations.`;
+    $("sparse").click();
+  };
+  $("sparse").onclick = () => {
+    const found = parseScheme($("stext").value);
+    if (!found.length){ $("sprev").innerHTML = `<p class="err" style="margin-top:10px">Aucun pourcentage trouvé. Colle les lignes du barème (ex. « Examen final 40 % »).</p>`; return; }
+    $("sprev").innerHTML = `<div class="sect"><h4>${found.length} évaluation${found.length > 1 ? "s" : ""} trouvée${found.length > 1 ? "s" : ""}</h4>
+      <p>Corrige les intitulés ou les % si besoin. Les notes seront « à venir ».</p>
+      <div class="prev">${found.map((e, i) => `<div class="prow sch ${e.checked ? "" : "off"}">
+        <input type="checkbox" data-i="${i}" data-f="on" ${e.checked ? "checked" : ""} aria-label="Garder">
+        <input data-i="${i}" data-f="title" value="${esc(e.title)}" aria-label="Intitulé">
+        <input data-i="${i}" data-f="w" value="${fr(e.weight || 0, 3)}" inputmode="decimal" aria-label="Pourcentage">
+      </div>`).join("")}</div>
+      <p class="total" id="stot"></p>
+      ${m.evals.length ? `<div class="radio"><label><input type="radio" name="smode" value="replace" ${hasScores ? "" : "checked"}> Remplacer les ${m.evals.length} évaluations actuelles</label>
+        <label><input type="radio" name="smode" value="add" ${hasScores ? "checked" : ""}> Ajouter à la suite</label></div>` : ""}
+      <p class="err" id="serr"></p>
+      <button id="sadd">Créer les évaluations</button></div>`;
+    const q = (i, f) => $("sprev").querySelector(`[data-i="${i}"][data-f="${f}"]`);
+    const total = () => {
+      let t = 0; found.forEach((e, i) => { if (q(i, "on").checked){ const w = num(q(i, "w").value); if (w > 0) t += w; } });
+      const el = $("stot"); el.textContent = `Total : ${fr(t, 2)} %${Math.abs(t - 100) > 0.01 ? " (un plan de cours fait en général 100 %)" : " ✓"}`;
+      el.className = "total" + (Math.abs(t - 100) > 0.01 ? " warn" : "");
+    };
+    $("sprev").querySelectorAll("input").forEach(inp => inp.addEventListener("input", () => {
+      if (inp.dataset.f === "on") inp.closest(".prow").classList.toggle("off", !inp.checked);
+      total();
+    }));
+    total();
+    $("sadd").onclick = () => {
+      const list = [];
+      for (let i = 0; i < found.length; i++){
+        if (!q(i, "on").checked) continue;
+        const w = num(q(i, "w").value), title = q(i, "title").value.trim() || "Évaluation";
+        if (w === null || Number.isNaN(w) || w < 0 || w > 100){ $("serr").textContent = `Pourcentage invalide pour « ${title} ».`; return; }
+        list.push({id: uid(), title, score: null, max: 100, weight: w});
+      }
+      if (!list.length){ $("serr").textContent = "Coche au moins une évaluation."; return; }
+      const modeEl = document.querySelector('input[name="smode"]:checked');
+      if (!modeEl || modeEl.value === "replace") m.evals = list; else m.evals.push(...list);
+      m.mode = "pct";
+      open.add(m.id);
+      save(); closeModal(); render();
+      toast(`${list.length} évaluation${list.length > 1 ? "s" : ""} créée${list.length > 1 ? "s" : ""}. Entre tes notes au fur et à mesure.`);
+    };
+  };
+}
+
 function loadExample(){
   const s = curSession();
   const a = {id: uid(), name: "Introduction à la microéconomie", code: "ECO1504", credits: 3, mode: "pct", target: 80, evals: [
@@ -743,13 +1094,14 @@ document.addEventListener("click", ev => {
     case "settings": settingsModal(); break;
     case "scale": state.scale = Number(el.dataset.v); save(); render(); settingsModal(); break;
     case "example": loadExample(); save(); render(); break;
+    case "import-courses": importCoursesModal(); break;
+    case "paste-scheme": if (m) schemeModal(m); break;
   }
 });
 document.addEventListener("keydown", ev => { if (ev.key === "Escape" && $("modalRoot").innerHTML && !sync.conflict) closeModal(); });
 
 persistLocal(); render(); renderSync();
 setTimeout(() => { initSync(); getDownloads(); }, 0);
-// Mode hors ligne : le service worker garde l'app en cache (sites https, localhost et app Android)
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")){
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }

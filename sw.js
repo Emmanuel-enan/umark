@@ -1,6 +1,6 @@
 // Umark — service worker : l'app s'ouvre même sans Internet.
 // Change VERSION à chaque mise à jour de l'app pour que les téléphones récupèrent la nouvelle version.
-const VERSION = "umark-v2";
+const VERSION = "umark-v4";
 const SHELL = [
   "./",
   "./index.html",
@@ -28,7 +28,7 @@ self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  const isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  const isFont = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com", "cdn.jsdelivr.net"].includes(url.hostname);  // polices + lecteurs PDF/Word
   if (url.origin !== self.location.origin && !isFont) return;
 
   // Page : réseau d'abord (pour avoir la dernière version), cache si hors ligne
