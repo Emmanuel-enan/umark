@@ -1,6 +1,6 @@
 // Umark — service worker : l'app s'ouvre même sans Internet.
 // Change VERSION à chaque mise à jour de l'app pour que les téléphones récupèrent la nouvelle version.
-const VERSION = "umark-v6";
+const VERSION = "umark-v10";
 const SHELL = [
   "./",
   "./index.html",

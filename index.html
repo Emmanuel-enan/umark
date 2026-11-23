@@ -789,15 +789,45 @@ function parseCourses(text){
   return out;
 }
 const GRADE_SCALE = /\d{2,3}\s*%?\s*(?:-|–|—|à|to)\s*\d{2,3}\s*%|(?:^|\s)(?:A\+|A-|B\+|B-|C\+|C-|D\+|D-)(?:\s|$|[:=])/;
-const NOISE = /(pénalit|penalt|retard|\blate\b|par jour|per day|minimum|au moins|at least|réduction|deduct|plagi|\btaxe?s?\b|rabais|discount|absence|attendance requirement)/i;
-const HEAD_RE = /(évaluation|evaluation|barème|bareme|pondération|ponderation|répartition|repartition|modalités|grading|assessment|marking|notation|calcul de la note|course grade|breakdown)/i;
+const NOISE = /(pénalit|penalt|retard|\blate\b|par jour|per day|minimum|minimale|au moins|at least|moins de|less than|passing|note de passage|réussir le cours|pass the course|réduction|deduct|plagi|\btaxe?s?\b|rabais|discount|absence|attendance|assiduité|ne pourra pas|report|exempt|exemp|dispens)/i;
+const HEAD_RE = /(aluation|évalu|evaluat|pondéra|pondera|\bpoids\b|\bweights?\b|évaluation|evaluation|barème|bareme|pondération|ponderation|répartition|repartition|modalités|grading|assessment|marking|notation|calcul de la note|course grade|breakdown)/i;
+
+// Tableau « Quiz | Poids (% du cours) » dont les lignes n'ont pas de « % » (« Module 1 - Acte 1   8 ») :
+// on ajoute le « % » pour que le reste de l'analyse le reconnaisse. Idem pour « compte pour quatre points de votre note finale ».
+function normalizeSchemeLines(lines){
+  const out = lines.slice();
+  const NUMW = "un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|quinze|vingt";
+  const wnum = w => /^\d/.test(w) ? w : ({un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8, neuf: 9, dix: 10, quinze: 15, vingt: 20})[w.toLowerCase()];
+  for (let i = 0; i < out.length; i++){
+    out[i] = out[i].replace(new RegExp(`\\b(\\d{1,3}(?:[.,]\\d+)?|${NUMW})\\s+points?\\s+(?:de|sur)\\s+(?:votre|la)\\s+note finale`, "gi"),
+      (all, n) => `${wnum(n)} % de la note finale`);
+    if (/(poids|pondération|ponderation|weight|valeur)/i.test(out[i]) && /%/.test(out[i]) && !/\d\s*%/.test(out[i])){
+      let rows = 0, sum = 0;
+      const marks = [];
+      for (let j = i + 1; j < out.length && j < i + 60; j++){
+        const l = out[j].trim();
+        if (!l) continue;
+        let m = l.match(/^(.*[A-Za-zÀ-ÿ].*?)[\t ]+(\d{1,3}(?:[.,]\d+)?)$/);
+        if (m){ marks.push([j, "row"]); rows++; sum += num(m[2]); continue; }
+        m = l.match(/^(\d{1,3}(?:[.,]\d+)?)$/);
+        if (m && j > i + 1 && /[A-Za-zÀ-ÿ]/.test(out[j - 1])){ marks.push([j, "cell"]); rows++; sum += num(m[1]); continue; }
+        if (/[A-Za-zÀ-ÿ]/.test(l) && l.length < 60 && j + 1 < out.length && /^\d{1,3}(?:[.,]\d+)?$/.test(out[j + 1].trim())) continue;   // libellé d'une cellule
+        break;
+      }
+      if (rows >= 2) for (const [j] of marks) out[j] = out[j].replace(/(\d{1,3}(?:[.,]\d+)?)\s*$/, "$1 %");
+    }
+  }
+  return out;
+}
+
+const MONTHS = /\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|january|february|march|april|june|july|august|september|october|november|december)\b/i;
 
 // Dans un plan de cours complet, trouve le passage qui contient le barème :
 // le groupe de lignes avec des % dont le total se rapproche le plus de 100 %, de préférence sous un titre « Évaluation ».
 function pickScheme(rawLines){
-  const lines = rawLines.map(l => String(l).replace(/ {2,}|\t/g, "\t").replace(/[ \u00a0]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
+  const lines = normalizeSchemeLines(rawLines.map(String)).map(l => String(l).replace(/ {2,}|\t/g, "\t").replace(/[ \u00a0]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
   const cand = [];
-  lines.forEach((l, i) => { if (/\d{1,3}(?:[.,]\d+)?\s*%/.test(l) && !GRADE_SCALE.test(l)) cand.push(i); });
+  lines.forEach((l, i) => { if (/(?:^|[^\d.,])(?!0\s*%)\d{1,3}(?:[.,]\d+)?\s*%/.test(l) && !GRADE_SCALE.test(l)) cand.push(i); });
   if (!cand.length) return null;
   // on essaie chaque suite de lignes à % (sans trou de plus de 8 lignes) et on garde la plus plausible
   let best = null;
@@ -806,12 +836,13 @@ function pickScheme(rawLines){
     const from = Math.max(a ? cand[a - 1] + 1 : 0, start - 2);
     const head = lines.slice(Math.max(0, start - 12), start + 1).some(l => HEAD_RE.test(l) && l.length < 90);
     for (let b = a; b < cand.length && b - a < 30; b++){
-      if (b > a && cand[b] - cand[b - 1] > 8) break;
+      if (b > a && cand[b] - cand[b - 1] > 45) break;
       const end = cand[b];
       const items = parseScheme(lines.slice(from, end + 1).join("\n")).filter(e => e.checked);
       if (!items.length) continue;
       const sum = items.reduce((t, e) => t + e.weight, 0);
-      const score = Math.abs(sum - 100) + (head ? 0 : 8) - Math.min(items.length, 10) * 0.01;
+      const junk = items.filter(e => /^\d|^[a-zà-ÿ]|\)$/.test(e.title) && !/\(/.test(e.title) || MONTHS.test(e.title) || /^Examen$/i.test(e.title)).length;
+      const score = Math.abs(sum - 100) + (head ? 0 : 8) + junk * 0.6 - Math.min(items.length, 10) * 0.01;
       if (!best || score < best.score - 1e-9) best = {score, from, end};
     }
   }
@@ -882,23 +913,67 @@ async function fileToLines(file){
   throw new Error("format");
 }
 
+// Mots-clés d'évaluation, pour nommer une évaluation décrite dans une phrase (« Il comptera pour 40 % de votre note »)
+const EVAL_KW = [
+  [/examens? finaux|examen final|final exam\w*/gi, "Examen final"],
+  [/examens? partiels?/gi, "Examen partiel"],
+  [/examens? (?:de )?mi-?session|mi-?session|midterms?|examen intra/gi, "Examen de mi-session"],
+  [/travaux pratiques|travail pratique|\bTP\b/g, "Travail pratique"],
+  [/\btests?\b/gi, "Test"], [/\bquiz\w*/gi, "Quiz"], [/\bdevoirs?\b|\bassignments?\b/gi, "Devoir"],
+  [/\bprojets?\b|\bprojects?\b/gi, "Projet"], [/participation/gi, "Participation"],
+  [/présentations?|presentations?/gi, "Présentation"], [/\brapports?\b|\breports?\b/gi, "Rapport"],
+  [/laboratoires?|\blabs?\b/gi, "Laboratoire"], [/exercices?/gi, "Exercices"], [/\bexamens?\b|\bexams?\b/gi, "Examen"]
+];
+function kwTitle(text){
+  let best = null, generic = "";
+  EVAL_KW.forEach(([re, name], rank) => {
+    re.lastIndex = 0; let m;
+    while ((m = re.exec(text))){
+      if (rank === EVAL_KW.length - 1){ generic = name; continue; }     // « examen » seul : en dernier recours
+      const e = m.index + m[0].length;
+      if (!best || e > best.e || (e === best.e && rank < best.rank)) best = {e, rank, name};
+    }
+  });
+  return best ? best.name : generic;
+}
+const NUM_WORDS = {un: 1, une: 1, deux: 2, trois: 3, quatre: 4, cinq: 5, six: 6, sept: 7, huit: 8, neuf: 9, dix: 10, two: 2, three: 3, four: 4, five: 5, six_: 6, ten: 10};
+// « quatre (4) devoirs », « ces 4 notes », « 5 tests » → 4, 4, 5
+function countBefore(text){
+  const re = /\b(\d{1,2}|un|une|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|two|three|four|five|ten)\s*(?:\(\s*\d+\s*\)\s*)?(?:meilleur(?:e)?s?\s+)?(?:notes?|tests?|quiz\w*|devoirs?|examens?|travaux|projets?|exercices?|laboratoires?|rapports?|présentations?|assignments?|exams?)\b/gi;
+  let m, last = null;
+  while ((m = re.exec(text))) last = m;
+  if (!last) return 1;
+  const w = last[1].toLowerCase();
+  return /^\d+$/.test(w) ? +w : (NUM_WORDS[w] || 1);
+}
 function parseScheme(text){
-  const lines = String(text || "").split(/\r?\n/)
-    .map(l => l.replace(/ {2,}|\t/g, "\t").replace(/[ \u00a0]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
+  const lines = normalizeSchemeLines(String(text || "").split(/\r?\n/))
+    .map(l => l.replace(/ {2,}|\t/g, "\t").replace(/[  ]+/g, " ").replace(/\s*\t\s*/g, "\t").trim()).filter(Boolean);
   const out = [];
   let prev = "";
-  const clean = t => t.replace(/^\s*(?:\d+[.)]|[-•·*–—▪◦])\s*/, "")
-                      .replace(/[\s:–—\-.…|•·=_]+$/g, "").replace(/^[\s:–—\-.…|•·=_(]+/g, "")
+  const clean = t => t.replace(/^[a-z]{1,4}(?=[A-Z])/, "").replace(/\bmi-\s+session/gi, "mi-session")
+                      .replace(/^\s*(?:\d+|[IVXivx]{1,5}|[A-Za-z])[.)]\s+/, "").replace(/^\s*[-•·*–—▪◦➔]\s*/, "")
+                      .replace(/[\s:–—\-.…|•·=_➔]+$/g, "").replace(/^[\s:–—\-.…|•·=_(]+/g, "")
                       .replace(/\(\s*$/, "").trim();
-  // intitulé voisin : quand la ligne du % n'a pas de nom (tableau sur plusieurs lignes)
   const label = l => (l.split("\t").map(clean).find(c => /[A-Za-zÀ-ÿ]{2,}/.test(c)) || "");
+  // intitulé voisin : quand la ligne du % n'a pas de nom (tableau sur plusieurs lignes)
   const nearTitle = i => {
+    for (const j of [i - 1, i - 2]){                                         // « Examen mi- » … « session »
+      const cell = (lines[j] || "").split("\t")[0].trim();
+      const nx = label(lines[i + 1] || "");
+      if (/[A-Za-zÀ-ÿ]-$/.test(cell) && !/\d\s*%/.test(lines[j]) && /^[a-zà-ÿ]{3,}$/.test(nx)) return clean(cell + nx);
+    }
+    for (const j of [i - 1, i - 2, i - 3]){                                  // d'abord une ligne qui nomme une évaluation
+      const l = lines[j];
+      if (!l || /\d\s*%/.test(l)) continue;
+      const c = label(l);
+      if (c && c.length <= 60 && /^[A-ZÀ-Ý]/.test(c) && kwTitle(c) && !/^(modules?|chapitres?|semaine|week)\b/i.test(c)) return c;
+    }
     for (const j of [i - 1, i - 2, i - 3, i + 1]){
       const l = lines[j];
       if (!l || /\d\s*%/.test(l)) continue;
       const c = label(l);
       if (c && c.length <= 45 && /^[A-ZÀ-Ý]/.test(c) && !/^\(/.test(c)){
-        // nom coupé sur deux lignes (« DGD / Groupes de » + « discussion »)
         if (/\s(de|des|du|d'|et|la|le|en|of|and|the)$/i.test(c)){
           for (const k of [j + 1, i + 1, i + 2]){
             const n = lines[k] && k !== i ? label(lines[k]) : "";
@@ -910,32 +985,108 @@ function parseScheme(text){
     }
     return "";
   };
+  // texte qui précède, jusqu'à la ligne avec un % précédente (pour les phrases)
+  const before = i => {
+    const parts = [];
+    for (let j = i - 1; j >= Math.max(0, i - 6); j--){ if (/\d\s*%/.test(lines[j])) break; parts.unshift(lines[j]); }
+    return parts.join(" ");
+  };
+  const singular = t => t.split(" ").map((w, k) => k < 2 && w.length > 3 && /[^s]s$/i.test(w) ? w.slice(0, -1) : w).join(" ");
   for (let li = 0; li < lines.length; li++){
     const line = lines[li];
     if (GRADE_SCALE.test(line)){ prev = ""; continue; }
-    const multi = line.match(/(\d+)\s*[x×]\s*(\d{1,3}(?:[.,]\d+)?)\s*%/i);
-    const pm = line.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
-    if (!pm){ prev = line.length < 80 ? line : ""; continue; }
-    const at = multi ? multi.index : pm.index;
-    // intitulé = 1re colonne avec des lettres avant le % (les colonnes suivantes sont souvent des dates)
-    const cells = line.slice(0, at).split("\t").map(clean).filter(c => /[A-Za-zÀ-ÿ]{2,}/.test(c));
-    let title = cells[0] || "";
-    if (title.length < 2) title = clean(line.slice(at + (multi ? multi[0] : pm[0]).length).replace(/^[^A-Za-zÀ-ÿ]+/, "").split(/[(,;\t]/)[0]);
-    if (title.length < 2) title = nearTitle(li) || clean(prev.split("\t")[0]) || "Évaluation";
-    if (title.length > 70) title = title.slice(0, 70).replace(/\s\S*$/, "") + "…";
-    prev = "";
-    if (/^(total|note finale|final grade|grand total|sous-total)\b/i.test(title)) continue;
-    if (multi){
-      const n = Math.min(+multi[1], 20), w = num(multi[2]);
-      for (let k = 1; k <= n; k++) out.push({title: `${title} ${k}`, weight: w, checked: true});
-    } else {
+    const pcts = [...line.matchAll(/(\d{1,3}(?:[.,]\d+)?)\s*%/g)];
+    if (!pcts.length){ prev = line.length < 80 ? line : ""; continue; }
+    let segStart = 0, inDetail = false, mainItem = null;
+    pcts.forEach((pm, pi) => {
+      const seg = line.slice(segStart, pm.index);
+      segStart = pm.index + pm[0].length;
       const w = num(pm[1]);
-      // « [10 % chacune] », « [5 %] » : détail d'une composante déjà comptée, pas une évaluation en plus
-      const detail = /\[[^\]]*\d\s*%[^\]]*\]/.test(line) || /\b(chacun|chacune|each)\b/i.test(line);
-      out.push({title, weight: w, checked: w > 0 && w <= 100 && !NOISE.test(line) && !detail});
-    }
+      // « Moyenne des 5 devoirs : 20 % (4 % par devoir) », « Labos : 5 % (0,5 % chacun…) » : le 2e % précise le 1er
+      if (pi > 0 && mainItem && (inDetail || /^\s*\(/.test(seg))){
+        inDetail = !/\)/.test(seg.replace(/^\s*\(/, "")) || inDetail && !/\)/.test(seg);
+        if (!mainItem.split && w > 0 && /^\s*\(?[^)]*$/.test(seg) && /\b(chacun|chacune|each|par)\b/i.test(line.slice(pm.index, pm.index + 30))){
+          const k = Math.round(mainItem.weight / w);
+          if (k >= 2 && k <= 20 && Math.abs(k * w - mainItem.weight) < 0.01) mainItem.split = {n: k, per: w};
+        }
+        return;
+      }
+      if (!(w > 0)) return;                                                   // « 0 % » : pas une évaluation
+      if (/\[[^\]]*$/.test(seg) && /^[^\[]*\]/.test(line.slice(pm.index))) return;  // « [10 % chacune] » : détail d'une composante
+      const multiM = seg.match(/(\d+)\s*[x×]\s*$/);                           // « Quiz (5 x 2 %) »
+      // intitulé = 1re colonne avec des lettres avant le % (les colonnes suivantes sont souvent des dates)
+      const cells = seg.replace(/(\d+)\s*[x×]\s*$/, "").split("\t").map(clean).filter(c => /[A-Za-zÀ-ÿ]{2,}/.test(c));
+      let title = cells[0] || "";
+      const ctx = (pi === 0 ? (lines[li - 1] || "") + " " : "") + seg;
+      const prose = title.length > 45 || /^[a-zà-ÿ)]/.test(title) || /\b(comptera|compte|comptant|vaut|valant|représente|counts?|worth|weighted)\b/i.test(seg);
+      let n = 1, per = w;
+      if (multiM){ n = Math.min(+multiM[1], 20); }
+      else if (prose || /^[a-zà-ÿ]/.test(title)){
+        const kw = kwTitle(seg) || kwTitle(before(li) + " " + seg);
+        if (kw){
+          title = kw;
+          n = Math.min(countBefore(ctx), 20);
+          // « Seuls les huit (8) meilleurs résultats » : seules ces notes comptent
+          const best = (line + " " + (lines[li + 1] || "")).match(/(\d{1,2}|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|two|three|four|five)\s*(?:\(\s*\d+\s*\)\s*)?(?:meilleur|best|highest)/i);
+          if (best && n > 1){ const b = /^\d+$/.test(best[1]) ? +best[1] : (NUM_WORDS[best[1].toLowerCase()] || n); if (b < n) n = b; }
+          if (n > 1 && !/\b(chacun|chacune|each|par (?:test|quiz|devoir))\b/i.test(seg + " " + line.slice(pm.index, pm.index + 25))) per = Math.round(w / n * 1000) / 1000;
+        }
+      }
+      if (title.length < 2 && pi === 0) title = clean(line.slice(segStart).replace(/^[^A-Za-zÀ-ÿ]+/, "").split(/[(,;\t]/)[0]);
+      if (title.length < 2) title = nearTitle(li) || clean(prev.split("\t")[0]) || "Évaluation";
+      if (title.length > 45 && title.indexOf(" (") > 3) title = title.slice(0, title.indexOf(" ("));
+      const dash = title.split(/\s+-\s+/);                                  // « MT-Exam - Examen de mi-session » → version française
+      if (dash.length === 2 && kwTitle(dash[0]) && kwTitle(dash[1])) title = dash[1];
+      title = title.replace(/^(un|une|le|la|les|l'|des)\s+(?=\S)/i, "");
+      if (title.length > 60) title = title.slice(0, 60).replace(/\s\S*$/, "") + "…";
+      if (/^(total|note finale|final grade|grand total|sous-total)\b/i.test(title)) return;
+      title = title.charAt(0).toUpperCase() + title.slice(1);
+      const around = seg + " " + line.slice(pm.index, pm.index + 40);
+      if (/(pénalit|penalt|retard|\blate\b|par jour|per day)/i.test(around)) return;      // pénalités : jamais une évaluation
+      const ok = per > 0 && per <= 100 && !NOISE.test(around);
+      if (n > 1){
+        const base = singular(title);
+        const grp = [];
+        for (let k = 1; k <= n; k++) grp.push({title: `${base} ${k}`, weight: per, checked: ok, group: true});
+        out.push(...grp); mainItem = null;
+      } else { mainItem = {title, weight: per, checked: ok, prose: !!(prose && kwTitle(title))}; out.push(mainItem); inDetail = false; }
+    });
+    prev = "";
   }
-  return out;
+  // détail « (4 % par devoir) » → une ligne par devoir
+  const res = [];
+  for (const it of out){
+    if (it.split){
+      const base = singular(kwTitle(it.title) && /\d/.test(it.title) ? kwTitle(it.title) : it.title.replace(/^moyenne des?\s+\d*\s*/i, "").replace(/^\w/, c => c.toUpperCase()));
+      for (let k = 1; k <= it.split.n; k++) res.push({title: `${base} ${k}`, weight: it.split.per, checked: it.checked});
+    } else res.push(it);
+  }
+  // « Deux examens partiels valant 40 % » suivi de « Test 1 (20 %) », « Test 2 (20 %) » : on garde la liste détaillée
+  for (let i = 0; i < res.length; i++){
+    if (!res[i].group || (i > 0 && res[i - 1].group && res[i - 1].title.replace(/\d+$/, "") === res[i].title.replace(/\d+$/, ""))) continue;
+    let n = 1; while (i + n < res.length && res[i + n].group && res[i + n].title.replace(/\d+$/, "") === res[i].title.replace(/\d+$/, "")) n++;
+    const next = res.slice(i + n, i + 2 * n);
+    if (next.length === n && next.every(x => !x.group && Math.abs(x.weight - res[i].weight) < 0.01)){ res.splice(i, n); i--; }
+  }
+  for (let i = 0; i < res.length; i++){
+    if (!res[i].group || (i > 0 && res[i - 1].group && res[i - 1].title.replace(/\d+$/, "") === res[i].title.replace(/\d+$/, ""))) continue;
+    let n = 1; while (i + n < res.length && res[i + n].group && res[i + n].title.replace(/\d+$/, "") === res[i].title.replace(/\d+$/, "")) n++;
+    const total = res.slice(i, i + n).reduce((t, x) => t + x.weight, 0), k = kwTitle(res[i].title);
+    const single = res.findIndex(x => !x.group && Math.abs(x.weight - total) < 0.01 && k && kwTitle(x.title) === k);
+    if (single >= 0){ res.splice(single, 1); if (single < i) i--; }
+    i += n - 1;
+  }
+  // « L'examen final … compte pour 46 % » répète la ligne « … Examens 46 % » du tableau : on garde le tableau, avec le nom le plus précis
+  const fam = t => /examen|exam/i.test(kwTitle(t)) ? "examen" : kwTitle(t);
+  for (let i = res.length - 1; i >= 0; i--){
+    const x = res[i];
+    if (!x.prose) continue;
+    const twin = res.find(y => y !== x && !y.prose && Math.abs(y.weight - x.weight) < 0.01 && fam(y.title) && fam(y.title) === fam(x.title));
+    if (twin){ if (kwTitle(twin.title) === "Examen" && kwTitle(x.title) !== "Examen") twin.title = x.title; res.splice(i, 1); }
+  }
+  const seenT = new Set();
+  return res.filter(x => { const k = x.title.toLowerCase() + "|" + x.weight; if (seenT.has(k)) return false; seenT.add(k); return true; })
+            .map(({title, weight, checked}) => ({title, weight, checked}));
 }
 
 // ---------- lecture de capture d'écran (reconnaissance de texte sur l'appareil) ----------
@@ -994,7 +1145,7 @@ function parseGrades(text){
         if (l && !/\d\s*(\/|%)/.test(l)){ title = label(l); if (title) break; }
       }
     }
-    title = title.replace(/(\s+(?!#\d)[\d.,%#/|°-]+)+$/, "").replace(/\s+[a-z]{1,2}$/i, m => /^(tp|td|ii|iv)$/i.test(m.trim()) ? m : "").trim();
+    title = title.replace(/(\s+(?!#\d)(?!\d$)[\d.,%#/|°-]+)+$/, "")   // garde « Devoir 2 », enlève les débris de colonnes.replace(/\s+[a-z]{1,2}$/i, m => /^(tp|td|ii|iv)$/i.test(m.trim()) ? m : "").trim();
     if (!title || title.length < 2 || GRADE_SKIP.test(title)) return;
     if (title.length > 60) title = title.slice(0, 60).replace(/\s\S*$/, "") + "…";
     out.push({title, score, max});
@@ -1014,11 +1165,12 @@ function titleSim(a, b){
   const B = normTitle(b).trim().split(" ").filter(w => w.length > 1 || /\d/.test(w));
   const nA = A.filter(w => /\d/.test(w)), nB = B.filter(w => /\d/.test(w));
   if (nA.length && nB.length && nA.join() !== nB.join()) return 0;      // « Quiz 1 » ≠ « Quiz 2 »
+  const half = (nA.length > 0) !== (nB.length > 0) ? 0.5 : 1;           // numéro d'un seul côté : moins sûr
   const stop = new Set(["de", "du", "des", "la", "le", "les", "et", "en", "of", "the", "and", "groupes", "groupe"]);
   const a2 = A.filter(w => !stop.has(w)), b2 = B.filter(w => !stop.has(w));
   if (!a2.length || !b2.length) return 0;
   const common = a2.filter(w => b2.includes(w)).length;
-  return 2 * common / (a2.length + b2.length);
+  return half * 2 * common / (a2.length + b2.length);
 }
 function matchGrades(found, evals){
   const pairs = [];
